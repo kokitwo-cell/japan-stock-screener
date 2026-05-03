@@ -580,9 +580,9 @@ header .status-pill.error { color: var(--accent); }
         <span class="toggle-label">営業利益 右肩上がり</span>
         <div class="toggle-switch on" id="swProfit"></div>
       </div>
-      <div class="toggle-row active" id="toggleEps" onclick="toggleFilter('epsGrowth')">
+      <div class="toggle-row" id="toggleEps" onclick="toggleFilter('epsGrowth')">
         <span class="toggle-label">EPS 右肩上がり</span>
-        <div class="toggle-switch on" id="swEps"></div>
+        <div class="toggle-switch" id="swEps"></div>
       </div>
     </div>
 
@@ -744,7 +744,7 @@ async function loadStaticData() {
 const filters = {
   revenueGrowth: true,
   profitGrowth: true,
-  epsGrowth: true,
+  epsGrowth: false,
   noDividendCut: true,
 };
 let allResults = [];
