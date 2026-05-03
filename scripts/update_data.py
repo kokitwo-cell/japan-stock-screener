@@ -244,11 +244,25 @@ def load_cache():
         print(f"キャッシュ読み込みエラー: {e}")
         return {}
 
+def _sanitize_for_json(obj):
+    """Infinity/NaN を null に置換（標準JSONで扱えないため）"""
+    import math
+    if isinstance(obj, float):
+        if math.isinf(obj) or math.isnan(obj):
+            return None
+        return obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_json(v) for v in obj]
+    return obj
+
+
 def save_cache(stocks_dict):
     try:
+        payload = _sanitize_for_json({"saved_at": datetime.now().isoformat(), "stocks": stocks_dict})
         with open(CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump({"saved_at": datetime.now().isoformat(), "stocks": stocks_dict},
-                      f, ensure_ascii=False)
+            json.dump(payload, f, ensure_ascii=False)
         print(f"キャッシュ保存: {len(stocks_dict)}銘柄")
     except Exception as e:
         print(f"キャッシュ保存エラー: {e}")
