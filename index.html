@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>日本株スクリーナー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Zen+Kaku+Gothic+New:wght@300;400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
+<style>
+:root {
+  --bg: #f5f2eb;
+  --bg2: #ede9df;
+  --panel: #faf8f3;
+  --border: #d8d2c4;
+  --ink: #1a1814;
+  --ink2: #6b6459;
+  --ink3: #9c9489;
+  --accent: #c84b2f;
+  --accent2: #3b7a57;
+  --accent3: #2b5c8a;
+  --warn: #b85c00;
+  --mono: 'DM Mono', monospace;
+  --sans: 'Zen Kaku Gothic New', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--sans); min-height: 100vh; }
+
+header {
+  background: var(--ink);
+  color: var(--bg);
+  padding: 0 40px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  border-bottom: 3px solid var(--accent);
+}
+header .logo {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 3px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+header .logo-mark {
+  width: 28px; height: 28px;
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 500; color: var(--accent);
+}
+header .status-pill {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  background: #2e2c28;
+  color: var(--ink3);
+  display: flex; align-items: center; gap: 6px;
+}
+header .status-pill.loading { color: var(--warn); }
+header .status-pill.done { color: var(--accent2); }
+header .status-pill.error { color: var(--accent); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+.layout { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 56px); }
+
+.sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 28px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.sidebar-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--ink3);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+.filter-section { display: flex; flex-direction: column; gap: 8px; }
+.filter-section-title {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--ink3);
+  text-transform: uppercase;
+}
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  background: var(--bg2);
+  transition: all 0.15s;
+  user-select: none;
+}
+.toggle-row:hover { border-color: var(--accent3); background: var(--bg); }
+.toggle-row.active {
+  border-color: var(--accent2);
+  background: #edf5f0;
+}
+.toggle-label { font-size: 13px; color: var(--ink2); }
+.toggle-row.active .toggle-label { color: var(--ink); }
+.toggle-switch {
+  width: 38px; height: 22px;
+  border-radius: 11px;
+  background: var(--border);
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.toggle-switch.on { background: var(--accent2); }
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: white;
+  top: 3px; left: 3px;
+  transition: left 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.toggle-switch.on::after { left: 19px; }
+
+.input-wrap { display: flex; flex-direction: column; gap: 5px; }
+.input-label { font-family: var(--mono); font-size: 10px; color: var(--ink3); letter-spacing: 1px; }
+.inp {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink);
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+.inp:focus { border-color: var(--accent3); }
+
+.run-btn {
+  background: var(--ink);
+  color: var(--bg);
+  border: none;
+  border-radius: 8px;
+  padding: 13px;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-top: 4px;
+  position: relative;
+  overflow: hidden;
+}
+.run-btn:hover { background: var(--accent); }
+.run-btn:disabled { background: var(--ink3); cursor: not-allowed; }
+.run-btn .btn-inner { display: flex; align-items: center; justify-content: center; gap: 8px; }
+
+.note-box {
+  background: #fff8e8;
+  border: 1px solid #e8d5a0;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 11px;
+  color: var(--warn);
+  line-height: 1.6;
+}
+
+.main { padding: 28px 32px; }
+.result-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.result-count {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink3);
+}
+.result-count .num { font-size: 28px; color: var(--ink); font-weight: 500; line-height: 1; }
+.sort-bar { display: flex; gap: 8px; font-family: var(--mono); font-size: 11px; }
+.sort-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--panel);
+  color: var(--ink2);
+  transition: all 0.1s;
+}
+.sort-btn.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+.filter-select {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--panel);
+  color: var(--ink2);
+  font-family: var(--sans);
+  font-size: 11px;
+  outline: none;
+  transition: all 0.1s;
+}
+.filter-select:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 80px 0;
+  color: var(--ink3);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 2;
+}
+.empty-state .big { font-size: 40px; margin-bottom: 12px; }
+
+.star-btn { cursor: pointer; color: var(--border); font-size: 18px; transition: color 0.1s; user-select: none; }
+.star-btn.active { color: #f5a623; }
+.star-btn:hover { color: #f5a623; transform: scale(1.1); }
+
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+
+.list-view { display: flex; flex-direction: column; gap: 0; }
+.list-view .list-header {
+  display: grid;
+  grid-template-columns: 30px 80px 1fr 90px 70px 70px 70px 80px;
+  gap: 0;
+  padding: 8px 16px;
+  background: var(--ink);
+  color: var(--bg);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  border-radius: 6px 6px 0 0;
+  position: sticky;
+  top: 56px;
+  z-index: 10;
+}
+.list-view .list-row {
+  display: grid;
+  grid-template-columns: 30px 80px 1fr 90px 70px 70px 70px 70px 80px;
+  gap: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  cursor: pointer;
+  transition: background 0.1s;
+  align-items: center;
+}
+.list-view .list-row:hover { background: var(--bg2); }
+.list-view .list-row .code { font-family: var(--mono); font-size: 12px; color: var(--ink3); }
+.list-view .list-row .name { font-size: 13px; font-weight: 700; }
+.list-view .list-row .name small { display: block; font-size: 11px; font-weight: 400; color: var(--ink3); margin-top: 1px; }
+.list-view .list-row .val { font-family: var(--mono); font-size: 13px; text-align: right; }
+.list-view .list-row .yield-val { color: var(--accent2); font-weight: 700; }
+.list-view .list-row .streak { font-size: 11px; color: var(--accent3); text-align: right; }
+
+.stock-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.stock-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent2), var(--accent3));
+  transform: scaleX(0);
+  transition: transform 0.2s;
+  transform-origin: left;
+}
+.stock-card:hover { border-color: var(--accent3); box-shadow: 0 4px 20px rgba(0,0,0,0.08); transform: translateY(-2px); }
+.stock-card:hover::after { transform: scaleX(1); }
+
+.card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+.code-chip {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  background: #fdf0ec;
+  border: 1px solid #f0c8be;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.sector-chip {
+  font-size: 11px;
+  color: var(--ink3);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: var(--mono);
+}
+.stock-name { font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+.stock-industry { font-size: 12px; color: var(--ink3); margin-bottom: 10px; }
+
+.copy-chip {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink2);
+  background: var(--bg2);
+  border: 1px dashed var(--border);
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.copy-chip:hover {
+  background: var(--border);
+  color: var(--ink);
+}
+
+.link-chip {
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--accent3);
+  background: #eef2f6;
+  border: 1px solid #d0dbe5;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-decoration: none;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+}
+.link-chip:hover {
+  background: var(--accent3);
+  color: white;
+  border-color: var(--accent3);
+}
+
+.nav-btn {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-family: var(--sans);
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--ink2);
+  transition: all 0.15s;
+}
+.nav-btn:not(:disabled):hover {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+.nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.metrics-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.metric-box {
+  background: var(--bg2);
+  border-radius: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+}
+.metric-lbl { font-family: var(--mono); font-size: 9px; color: var(--ink3); letter-spacing: 1px; margin-bottom: 3px; }
+.metric-val { font-family: var(--mono); font-size: 14px; font-weight: 500; color: var(--ink); }
+
+.mini-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.mini-chart-box {
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+}
+.mini-chart-lbl { font-family: var(--mono); font-size: 9px; color: var(--ink3); letter-spacing: 1px; margin-bottom: 4px; }
+.chart-canvas-wrap { position: relative; height: 48px; }
+
+.badges { display: flex; flex-wrap: wrap; gap: 5px; }
+.badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  border: 1px solid;
+}
+.badge-ok { color: var(--accent2); border-color: #a8d5b8; background: #edf5f0; }
+.badge-ng { color: var(--accent); border-color: #f0c8be; background: #fdf0ec; }
+.badge-na { color: var(--ink3); border-color: var(--border); background: var(--bg2); }
+
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(26,24,20,0.7);
+  z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+}
+.modal {
+  background: var(--panel);
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  width: 100%;
+  max-width: 760px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+.modal-header-fixed {
+  padding: 32px 32px 16px 32px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  z-index: 10;
+  flex-shrink: 0;
+}
+.modal-body-scroll {
+  padding: 20px 32px 32px 32px;
+  overflow-y: auto;
+  flex-grow: 1;
+}
+.modal-close {
+  position: absolute;
+  top: 16px; right: 16px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--ink2);
+  transition: all 0.15s;
+  z-index: 20;
+}
+.modal-close:hover { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.modal-name { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.modal-meta { font-family: var(--mono); font-size: 11px; color: var(--ink3); display: flex; gap: 12px; }
+.modal-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 28px; }
+.modal-metric { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+.modal-metric-lbl { font-family: var(--mono); font-size: 9px; letter-spacing: 1px; color: var(--ink3); margin-bottom: 4px; }
+.modal-metric-val { font-family: var(--mono); font-size: 18px; font-weight: 500; }
+.modal-metric-val.green { color: var(--accent2); }
+.modal-metric-val.red { color: var(--accent); }
+
+.full-chart-section { margin-bottom: 24px; }
+.full-chart-lbl { font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--ink3); margin-bottom: 8px; border-left: 3px solid var(--accent3); padding-left: 8px; }
+.full-chart-wrap { height: 160px; position: relative; }
+
+.skeleton { background: linear-gradient(90deg, var(--bg2) 0%, var(--border) 50%, var(--bg2) 100%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 6px; }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.skel-card { height: 240px; border-radius: 10px; }
+
+.progress-bar-wrap { background: var(--bg2); border-radius: 4px; height: 6px; overflow: hidden; }
+.progress-bar-fill { height: 100%; background: var(--accent3); border-radius: 4px; transition: width 0.3s; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.update-info {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink3);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  line-height: 1.6;
+}
+.update-info b { color: var(--accent2); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-mark">株</div>
+    JAPAN STOCK SCREENER
+  </div>
+  <div class="status-pill" id="statusPill">
+    <div class="dot"></div>
+    <span id="statusText">読み込み中...</span>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-title">DATA</div>
+
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:11px;color:var(--ink3)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span>銘柄リスト</span>
+        <span id="totalCodes" style="color:var(--accent3);font-weight:500">—</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span>キャッシュ済</span>
+        <span id="cacheCount" style="color:var(--ink)">—</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span>最終更新</span>
+        <span id="cacheUpdated" style="color:var(--ink2);font-size:10px">—</span>
+      </div>
+    </div>
+
+    <div class="update-info">
+      🔄 データは <b>GitHub Actions</b> によって<br>
+      <b>毎週日曜 00:00 UTC</b>(月曜 09:00 JST) に<br>自動更新されます。
+    </div>
+
+    <button class="run-btn" id="runBtn" onclick="runScreen()" style="margin-top:8px;">
+      <div class="btn-inner">▶ スクリーニング実行</div>
+    </button>
+
+    <div id="progressWrap" style="display:none; margin-top:4px;">
+      <div class="input-label" style="margin-bottom:6px" id="progressLabel">取得中... 0/25</div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" id="progressBar" style="width:0%"></div>
+      </div>
+    </div>
+
+
+    <div class="sidebar-title" style="margin-top: 12px;">SCREENING CONDITIONS</div>
+
+    <div class="filter-section">
+      <div class="filter-section-title">ウォッチリスト</div>
+      <div class="toggle-row" id="toggleWatchlistBtn" onclick="toggleWatchlistFilter()">
+        <span class="toggle-label">★ お気に入りのみ表示</span>
+        <div class="toggle-switch" id="swWatchlist"></div>
+      </div>
+    </div>
+
+    <div class="filter-section">
+      <div class="filter-section-title">DIVIDEND</div>
+      <div class="input-wrap">
+        <div class="input-label">配当利回り 下限（%）</div>
+        <input class="inp" type="number" id="minDividendYield" placeholder="例: 3" min="0" step="0.5">
+      </div>
+      <div class="input-wrap">
+        <div class="input-label">連続維持 最低年数</div>
+        <input class="inp" type="number" id="minDividendStreak" placeholder="例: 5" min="0" step="1">
+      </div>
+      <div class="input-wrap">
+        <div class="input-label">最低配当金額（円）</div>
+        <input class="inp" type="number" id="minDividendAmount" placeholder="例: 30" min="0" step="1">
+      </div>
+    </div>
+
+    <div class="filter-section">
+      <div class="filter-section-title">GROWTH TREND （10年）</div>
+      <div class="toggle-row active" id="toggleRevenue" onclick="toggleFilter('revenueGrowth')">
+        <span class="toggle-label">売上高 右肩上がり</span>
+        <div class="toggle-switch on" id="swRevenue"></div>
+      </div>
+      <div class="toggle-row active" id="toggleProfit" onclick="toggleFilter('profitGrowth')">
+        <span class="toggle-label">営業利益 右肩上がり</span>
+        <div class="toggle-switch on" id="swProfit"></div>
+      </div>
+      <div class="toggle-row active" id="toggleEps" onclick="toggleFilter('epsGrowth')">
+        <span class="toggle-label">EPS 右肩上がり</span>
+        <div class="toggle-switch on" id="swEps"></div>
+      </div>
+    </div>
+
+    <div class="filter-section">
+      <div class="filter-section-title">DIVIDEND SUSTAINABILITY</div>
+      <div class="toggle-row active" id="toggleDivCut" onclick="toggleFilter('noDividendCut')">
+        <span class="toggle-label">減配なし（横ばい・増配維持）</span>
+        <div class="toggle-switch on" id="swDivCut"></div>
+      </div>
+    </div>
+
+    <div class="filter-section">
+      <div class="filter-section-title">VALUATION（任意）</div>
+      <div class="input-wrap">
+        <div class="input-label">PER 上限</div>
+        <input class="inp" type="number" id="maxPER" placeholder="例: 30" min="1">
+      </div>
+      <div class="input-wrap">
+        <div class="input-label">PBR 上限</div>
+        <input class="inp" type="number" id="maxPBR" placeholder="例: 5" min="0.1" step="0.1">
+      </div>
+    </div>
+
+    <div class="filter-section">
+      <div class="filter-section-title">TREND SENSITIVITY</div>
+      <div class="input-wrap">
+        <div class="input-label">R² 閾値（0〜1、値が高いほど安定）</div>
+        <input class="inp" type="number" id="r2Threshold" value="0.7" min="0" max="1" step="0.1">
+      </div>
+    </div>
+
+    <div class="note-box">
+      📋 銘柄リストはJPX公式CSV由来。<br>
+      ★お気に入りはこのブラウザに保存されます。
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="result-bar">
+      <div class="result-count">
+        <div class="num" id="resultNum">—</div>
+        <div>社がヒット</div>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:20px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="color:var(--ink3); font-family:var(--mono); font-size:11px;">業種絞り込み:</span>
+          <select class="filter-select" id="s33Filter" onchange="applyFilters()">
+            <option value="">全業種</option>
+          </select>
+        </div>
+
+        <div class="sort-bar">
+          <span style="color:var(--ink3); align-self:center;">並び替え:</span>
+          <button class="sort-btn" onclick="setSort('currentPrice')">株価</button>
+          <button class="sort-btn active" onclick="setSort('dividendYield')">配当利回り</button>
+          <button class="sort-btn" onclick="setSort('per')">PER</button>
+          <button class="sort-btn" onclick="setSort('pbr')">PBR</button>
+          <button class="sort-btn" onclick="setSort('name')">名前</button>
+          <span style="width:1px;background:var(--border);margin:0 4px;align-self:stretch;"></span>
+          <button class="sort-btn" id="viewCardBtn" onclick="setView('card')" title="カード表示">⊞</button>
+          <button class="sort-btn active" id="viewListBtn" onclick="setView('list')" title="リスト表示">☰</button>
+          <button class="sort-btn" onclick="downloadCSV()" title="CSVダウンロード">↓CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="cardGrid" class="card-grid">
+      <div class="empty-state" style="grid-column:1/-1">
+        <div class="big">🔍</div>
+        条件を設定して<br>「スクリーニング実行」を押してください
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="modal" style="display:none" onclick="closeModal(event)">
+  <div class="modal" id="modalContent">
+    <button class="modal-close" onclick="document.getElementById('modal').style.display='none'">✕ 閉じる</button>
+    <div id="modalHeaderFixed" class="modal-header-fixed"></div>
+    <div id="modalBodyScroll" class="modal-body-scroll"></div>
+  </div>
+</div>
+
+<script>
+// ===== STATIC DATA STORE =====
+let STOCK_CACHE = {};
+let JQUANTS_INFO = {};
+let TSE_CODES = [];
+let CACHE_SAVED_AT = null;
+
+async function loadStaticData() {
+  setStatus('loading', 'データ読み込み中...');
+  try {
+    const cacheUrl = `data/stock_cache.json?v=${Date.now()}`;
+    const jqUrl = `data/jquants_info.json?v=${Date.now()}`;
+    const tseUrl = `data/tse_codes.json?v=${Date.now()}`;
+
+    const [cacheResp, jqResp, tseResp] = await Promise.all([
+      fetch(cacheUrl),
+      fetch(jqUrl).catch(() => null),
+      fetch(tseUrl).catch(() => null),
+    ]);
+
+    if (!cacheResp.ok) throw new Error(`stock_cache.json: HTTP ${cacheResp.status}`);
+    const cacheJson = await cacheResp.json();
+    STOCK_CACHE = cacheJson.stocks || {};
+    CACHE_SAVED_AT = cacheJson.saved_at || null;
+
+    if (jqResp && jqResp.ok) {
+      const jqJson = await jqResp.json();
+      JQUANTS_INFO = jqJson.info || {};
+    }
+
+    if (tseResp && tseResp.ok) {
+      TSE_CODES = await tseResp.json();
+    }
+
+    // Apply J-Quants info to cache
+    if (JQUANTS_INFO && Object.keys(JQUANTS_INFO).length) {
+      for (const code in STOCK_CACHE) {
+        const info = JQUANTS_INFO[String(code).padStart(4, '0')];
+        if (info) {
+          STOCK_CACHE[code].jaName = info.jaName || STOCK_CACHE[code].jaName;
+          STOCK_CACHE[code].s33Name = info.s33Name || STOCK_CACHE[code].s33Name;
+          STOCK_CACHE[code].s33Code = info.s33Code || STOCK_CACHE[code].s33Code;
+          STOCK_CACHE[code].s17Name = info.s17Name || STOCK_CACHE[code].s17Name;
+          if (info.market) STOCK_CACHE[code].market = info.market;
+        }
+      }
+    }
+
+    // Fallback: TSE list ja name
+    if (TSE_CODES.length) {
+      const tseDict = {};
+      TSE_CODES.forEach(s => { tseDict[s.code] = s; });
+      for (const code in STOCK_CACHE) {
+        if (!STOCK_CACHE[code].jaName && tseDict[code]) {
+          STOCK_CACHE[code].jaName = tseDict[code].name;
+          if (!STOCK_CACHE[code].market) STOCK_CACHE[code].market = tseDict[code].market;
+        }
+      }
+    }
+
+    document.getElementById('totalCodes').textContent = TSE_CODES.length ? `${TSE_CODES.length}社` : '—';
+    document.getElementById('cacheCount').textContent = `${Object.keys(STOCK_CACHE).length}銘柄`;
+    if (CACHE_SAVED_AT) {
+      const d = new Date(CACHE_SAVED_AT);
+      document.getElementById('cacheUpdated').textContent =
+        `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    }
+    setStatus('done', `${Object.keys(STOCK_CACHE).length}銘柄読み込み完了`);
+  } catch (e) {
+    setStatus('error', `データ読み込み失敗: ${e.message}`);
+    console.error(e);
+  }
+}
+
+const filters = {
+  revenueGrowth: true,
+  profitGrowth: true,
+  epsGrowth: true,
+  noDividendCut: true,
+};
+let allResults = [];
+let currentDisplayList = [];
+let currentModalCode = null;
+
+let sortKey = 'dividendYield';
+
+let viewMode = 'list';
+let watchlist = JSON.parse(localStorage.getItem('watchlist') || '[]');
+let showWatchlistOnly = false;
+const miniCharts = {};
+const modalCharts = {};
+
+function toggleFilter(key) {
+  filters[key] = !filters[key];
+  const map = {
+    revenueGrowth: ['toggleRevenue', 'swRevenue'],
+    profitGrowth:  ['toggleProfit',  'swProfit'],
+    epsGrowth:     ['toggleEps',     'swEps'],
+    noDividendCut: ['toggleDivCut',  'swDivCut'],
+  };
+  const [rowId, swId] = map[key];
+  document.getElementById(rowId).classList.toggle('active', filters[key]);
+  document.getElementById(swId).classList.toggle('on', filters[key]);
+}
+
+function toggleWatchlist(e, code) {
+  e.stopPropagation();
+  if (watchlist.includes(code)) {
+    watchlist = watchlist.filter(c => c !== code);
+  } else {
+    watchlist.push(code);
+  }
+  localStorage.setItem('watchlist', JSON.stringify(watchlist));
+
+  const mStar = document.getElementById('modalStar');
+  if (mStar && mStar.dataset.code === code) {
+    mStar.className = `star-btn ${watchlist.includes(code) ? 'active' : ''}`;
+  }
+
+  applyFilters();
+}
+
+function toggleWatchlistFilter() {
+  showWatchlistOnly = !showWatchlistOnly;
+  document.getElementById('toggleWatchlistBtn').classList.toggle('active', showWatchlistOnly);
+  document.getElementById('swWatchlist').classList.toggle('on', showWatchlistOnly);
+  applyFilters();
+}
+
+function setSort(key) {
+  sortKey = key;
+  document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  applyFilters();
+}
+
+function copyCode(text, el) {
+  navigator.clipboard.writeText(text).then(() => {
+    const originalHTML = el.innerHTML;
+    el.innerHTML = '✅ コピー済';
+    el.style.color = 'var(--accent2)';
+    el.style.borderColor = 'var(--accent2)';
+    setTimeout(() => {
+      el.innerHTML = originalHTML;
+      el.style.color = '';
+      el.style.borderColor = '';
+    }, 1500);
+  });
+}
+
+// ===== CLIENT-SIDE SCREENING =====
+function runScreen() {
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+
+  if (!STOCK_CACHE || !Object.keys(STOCK_CACHE).length) {
+    setStatus('error', 'データ未読み込み');
+    btn.disabled = false;
+    return;
+  }
+
+  const params = {
+    ...filters,
+    maxPER: document.getElementById('maxPER').value || null,
+    maxPBR: document.getElementById('maxPBR').value || null,
+    r2Threshold: parseFloat(document.getElementById('r2Threshold').value) || 0.7,
+    minDividendYield: document.getElementById('minDividendYield').value || null,
+    minDividendStreak: document.getElementById('minDividendStreak').value || null,
+    minDividendAmount: document.getElementById('minDividendAmount').value || null,
+    minDividendYears: 5,
+  };
+
+  setStatus('loading', 'スクリーニング中...');
+  document.getElementById('progressWrap').style.display = 'block';
+  showSkeletons();
+
+  try {
+    const results = screenStocks(STOCK_CACHE, params);
+    allResults = results;
+
+    const select = document.getElementById('s33Filter');
+    const industries = [...new Set(allResults.map(s => s.s33Name).filter(Boolean))].sort();
+    select.innerHTML = '<option value="">全業種</option>' + industries.map(i => `<option value="${i}">${i}</option>`).join('');
+
+    applyFilters();
+
+  } catch (e) {
+    console.error(e);
+    setStatus('error', 'エラー: ' + e.message);
+    document.getElementById('cardGrid').innerHTML = `
+      <div class="empty-state" style="grid-column:1/-1">
+        <div class="big">❌</div>
+        スクリーニング中にエラーが発生しました。<br>
+        ${e.message}
+      </div>`;
+    document.getElementById('resultNum').textContent = '—';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function screenStocks(cache, p) {
+  const r2_thr = p.r2Threshold;
+  const results = [];
+  for (const code in cache) {
+    const data = cache[code];
+    const rt = data.revenueTrend || {};
+    const pt = data.profitTrend || {};
+    const et = data.epsTrend || {};
+
+    if (p.revenueGrowth && !((rt.slope || 0) > 0 && (rt.r2 || 0) > r2_thr)) continue;
+    if (p.profitGrowth && !((pt.slope || 0) > 0 && (pt.r2 || 0) > r2_thr)) continue;
+    if (p.epsGrowth && !((et.slope || 0) > 0 && (et.r2 || 0) > r2_thr)) continue;
+    if (p.noDividendCut && data.noDividendCut === false) continue;
+    if (p.maxPER && (data.per || 0) > 0 && data.per > parseFloat(p.maxPER)) continue;
+    if (p.maxPBR && (data.pbr || 0) > 0 && data.pbr > parseFloat(p.maxPBR)) continue;
+
+    const divYears = data.dividendYears || [];
+    if (divYears.length < p.minDividendYears) continue;
+
+    if (p.minDividendYield) {
+      const dy = data.dividendYield || 0;
+      if (dy <= 0 || dy < parseFloat(p.minDividendYield)) continue;
+    }
+    if (p.minDividendAmount) {
+      const divVals = data.dividend || [];
+      const latest = divVals.length ? divVals[divVals.length - 1] : 0;
+      if (latest < parseFloat(p.minDividendAmount)) continue;
+    }
+    if (p.minDividendStreak) {
+      const streak = data.dividendStreak || 0;
+      if (streak < parseInt(p.minDividendStreak)) continue;
+    }
+
+    results.push(data);
+  }
+
+  results.sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0));
+  return results;
+}
+
+function applyFilters() {
+  const s33 = document.getElementById('s33Filter')?.value || '';
+  let filtered = allResults;
+
+  if (s33) filtered = filtered.filter(s => s.s33Name === s33);
+
+  if (showWatchlistOnly) {
+    filtered = filtered.filter(s => watchlist.includes(s.code));
+  }
+
+  document.getElementById('progressLabel').textContent = `完了: ${filtered.length}社ヒット / ${allResults.length}社中`;
+  document.getElementById('progressBar').style.width = '100%';
+  setStatus('done', `完了 — ${filtered.length}社`);
+  renderCards(filtered);
+}
+
+function setView(mode) {
+  viewMode = mode;
+  document.getElementById('viewCardBtn').classList.toggle('active', mode === 'card');
+  document.getElementById('viewListBtn').classList.toggle('active', mode === 'list');
+  if (allResults.length > 0) applyFilters();
+}
+
+function renderList(stocks) {
+  const grid = document.getElementById('cardGrid');
+  Object.values(miniCharts).forEach(c => c.destroy());
+  for (const k in miniCharts) delete miniCharts[k];
+
+  grid.className = 'list-view';
+  grid.innerHTML = `
+    <div class="list-header">
+      <span></span>
+      <span>コード</span>
+      <span>会社名</span>
+      <span style="text-align:right">配当利回り</span>
+      <span style="text-align:right">株価</span>
+      <span style="text-align:right">PER</span>
+      <span style="text-align:right">PBR</span>
+      <span style="text-align:right">連続年数</span>
+    </div>
+    ${stocks.map(s => {
+      const yld = s.dividendYield > 0 ? s.dividendYield.toFixed(1) + '%' : '—';
+      const per = s.per > 0 ? s.per.toFixed(1) + 'x' : '—';
+      const pbr = s.pbr > 0 ? s.pbr.toFixed(2) + 'x' : '—';
+      const price = s.currentPrice > 0 ? '¥' + s.currentPrice.toLocaleString() : '—';
+      const streak = s.dividendStreak > 0 ? s.dividendStreak + '年' : '—';
+      return `<div class="list-row" onclick="openModal('${s.code}')">
+        <span class="star-btn ${watchlist.includes(s.code) ? 'active' : ''}" onclick="toggleWatchlist(event, '${s.code}')">★</span>
+        <span class="code">${s.code}</span>
+        <span class="name">${s.jaName || s.name}<small>${s.s33Name || s.industry || s.sector || ''}</small></span>
+        <span class="val yield-val">${yld}</span>
+        <span class="val">${price}</span>
+        <span class="val">${per}</span>
+        <span class="val">${pbr}</span>
+        <span class="streak">${streak}</span>
+      </div>`;
+    }).join('')}
+  `;
+}
+
+function downloadCSV() {
+  if (allResults.length === 0) { alert('先にスクリーニングを実行してください'); return; }
+  const sorted = getSorted(allResults);
+  const header = ['コード','会社名','セクター','業種','株価','配当利回り(%)','PER','PBR','連続維持/増配年数','売上トレンドR2','利益トレンドR2'];
+  const rows = sorted.map(s => [
+    s.code, s.jaName || s.name, s.s33Name || s.sector || '', s.industry || '',
+    s.currentPrice || '',
+    s.dividendYield > 0 ? s.dividendYield.toFixed(2) : '',
+    s.per > 0 ? s.per.toFixed(1) : '',
+    s.pbr > 0 ? s.pbr.toFixed(2) : '',
+    s.dividendStreak || 0,
+    s.revenueTrend?.r2?.toFixed(3) || '',
+    s.profitTrend?.r2?.toFixed(3) || ''
+  ]);
+  const csv = [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `screening_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+function getSorted(stocks) {
+  return [...stocks].sort((a, b) => {
+    if (sortKey === 'dividendYield') return (b.dividendYield || 0) - (a.dividendYield || 0);
+    if (sortKey === 'currentPrice') return (b.currentPrice || 0) - (a.currentPrice || 0);
+    if (sortKey === 'per') return (a.per || 999) - (b.per || 999);
+    if (sortKey === 'pbr') return (a.pbr || 999) - (b.pbr || 999);
+    if (sortKey === 'name') return (a.jaName || a.name).localeCompare(b.jaName || b.name, 'ja');
+    return 0;
+  });
+}
+
+function renderCards(stocks) {
+  const sorted = getSorted(stocks);
+  currentDisplayList = sorted;
+  document.getElementById('resultNum').textContent = sorted.length;
+
+  if (sorted.length === 0) {
+    Object.values(miniCharts).forEach(c => c.destroy());
+    for (const k in miniCharts) delete miniCharts[k];
+    document.getElementById('cardGrid').className = 'card-grid';
+    document.getElementById('cardGrid').innerHTML = `
+      <div class="empty-state" style="grid-column:1/-1">
+        <div class="big">📭</div>
+        条件に合う銘柄がありませんでした。<br>フィルタを緩めて再実行してください。
+      </div>`;
+    return;
+  }
+
+  if (viewMode === 'list') {
+    renderList(sorted);
+    return;
+  }
+
+  Object.values(miniCharts).forEach(c => c.destroy());
+  for (const k in miniCharts) delete miniCharts[k];
+
+  const grid = document.getElementById('cardGrid');
+  grid.className = 'card-grid';
+  grid.innerHTML = sorted.map(s => cardHTML(s)).join('');
+
+  sorted.forEach(s => {
+    drawMiniChart(`rev-${s.code}`, s.years, s.revenue, '#3b7a57');
+    drawMiniChart(`prof-${s.code}`, s.years, s.profit, '#2b5c8a');
+  });
+}
+
+function cardHTML(s) {
+  const rt = s.revenueTrend;
+  const pt = s.profitTrend;
+  const divOk = s.noDividendCut;
+  const divYield = s.dividendYield > 0 ? s.dividendYield.toFixed(1) + '%' : '—';
+  const divStreak = s.dividendStreak > 0 ? s.dividendStreak + '年連続' : null;
+
+  const badge = (ok, label) => {
+    if (ok === null || ok === undefined) return `<span class="badge badge-na">${label} —</span>`;
+    return ok
+      ? `<span class="badge badge-ok">✓ ${label}</span>`
+      : `<span class="badge badge-ng">✗ ${label}</span>`;
+  };
+
+  const revOk = rt && rt.slope > 0 && rt.r2 > 0.7;
+  const profOk = pt && pt.slope > 0 && pt.r2 > 0.7;
+
+  return `
+  <div class="stock-card" onclick="openModal('${s.code}')">
+    <div class="card-top">
+      <div style="display:flex; gap:8px; align-items:flex-start">
+        <div class="star-btn ${watchlist.includes(s.code) ? 'active' : ''}" onclick="toggleWatchlist(event, '${s.code}')" style="margin-top:2px;">★</div>
+        <div>
+          <div class="code-chip">${s.code}</div>
+          <div class="stock-name" style="margin-top:6px">${s.jaName || s.name}</div>
+          <div class="stock-industry">${s.s33Name || s.industry || s.sector || ''}</div>
+        </div>
+      </div>
+      <div class="sector-chip">${s.s33Name || s.sector || '—'}</div>
+    </div>
+
+    <div class="metrics-row">
+      <div class="metric-box">
+        <div class="metric-lbl">株価</div>
+        <div class="metric-val">${s.currentPrice > 0 ? '¥' + s.currentPrice.toLocaleString() : '—'}</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-lbl">配当利回り</div>
+        <div class="metric-val" style="color:${s.dividendYield>=3?'var(--accent2)':'inherit'}">${divYield}</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-lbl">PER</div>
+        <div class="metric-val">${s.per > 0 ? s.per + 'x' : '—'}</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-lbl">PBR</div>
+        <div class="metric-val">${s.pbr > 0 ? s.pbr + 'x' : '—'}</div>
+      </div>
+    </div>
+
+    <div class="mini-charts">
+      <div class="mini-chart-box">
+        <div class="mini-chart-lbl">売上高 (億円)</div>
+        <div class="chart-canvas-wrap"><canvas id="rev-${s.code}"></canvas></div>
+      </div>
+      <div class="mini-chart-box">
+        <div class="mini-chart-lbl">営業利益 (億円)</div>
+        <div class="chart-canvas-wrap"><canvas id="prof-${s.code}"></canvas></div>
+      </div>
+    </div>
+
+    <div class="badges">
+      ${divStreak ? `<span class="badge badge-ok">🏆 ${divStreak}維持/増配</span>` : ''}
+      ${badge(revOk, '売上↑')}
+      ${badge(profOk, '利益↑')}
+      ${badge(divOk, '減配なし')}
+    </div>
+  </div>`;
+}
+
+function drawMiniChart(id, labels, data, color) {
+  const canvas = document.getElementById(id);
+  if (!canvas || !data || !data.length) return;
+  miniCharts[id] = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{ data, borderColor: color, borderWidth: 2, pointRadius: 0, tension: 0.3, fill: true,
+        backgroundColor: color + '18' }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: { x: { display: false }, y: { display: false } },
+    }
+  });
+}
+
+function navigateModal(dir) {
+  if (!currentModalCode) return;
+  const currentIndex = currentDisplayList.findIndex(x => x.code === currentModalCode);
+  if (currentIndex === -1) return;
+
+  const newIndex = currentIndex + dir;
+  if (newIndex >= 0 && newIndex < currentDisplayList.length) {
+    openModal(currentDisplayList[newIndex].code);
+  }
+}
+
+function openModal(code) {
+  const s = allResults.find(x => x.code === code) || STOCK_CACHE[code];
+  if (!s) return;
+
+  currentModalCode = code;
+
+  const currentIndex = currentDisplayList.findIndex(x => x.code === code);
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex >= 0 && currentIndex < currentDisplayList.length - 1;
+
+  Object.values(modalCharts).forEach(c => c.destroy());
+  for (const k in modalCharts) delete modalCharts[k];
+
+  const rt = s.revenueTrend;
+  const pt = s.profitTrend;
+  const et = s.epsTrend;
+
+  document.getElementById('modalHeaderFixed').innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+      <div style="display:flex; gap:10px; align-items:center;">
+        <span class="star-btn ${watchlist.includes(s.code) ? 'active' : ''}" id="modalStar" data-code="${s.code}" onclick="toggleWatchlist(event, '${s.code}')" title="ウォッチリストに追加/解除">★</span>
+        <span class="code-chip">${s.code}</span>
+        <span class="copy-chip" onclick="copyCode('${s.code}', this)" title="クリックしてコピー">📋 ${s.code}</span>
+        <a href="https://irbank.net/${s.code}/results" target="_blank" rel="noopener noreferrer" class="link-chip" title="IR BANKで業績を見る">🏦 IR BANK</a>
+        <a href="https://finance.yahoo.co.jp/quote/${s.code}.T" target="_blank" rel="noopener noreferrer" class="link-chip" title="Yahoo!ファイナンスで見る">📈 Yahoo!</a>
+        <span class="sector-chip">${s.s33Name || s.sector || '—'}</span>
+      </div>
+
+      <div style="display:flex; gap:6px; align-items:center; padding-right: 90px;">
+        <button class="nav-btn" onclick="navigateModal(-1)" ${!hasPrev ? 'disabled' : ''}>◀ 前へ</button>
+        <span style="font-family:var(--mono); font-size:11px; color:var(--ink3); min-width:40px; text-align:center;">${currentIndex >= 0 ? currentIndex + 1 : '-'}/${currentDisplayList.length}</span>
+        <button class="nav-btn" onclick="navigateModal(1)" ${!hasNext ? 'disabled' : ''}>次へ ▶</button>
+      </div>
+    </div>
+    <div class="modal-name">${s.jaName || s.name}</div>
+    <div class="modal-meta" style="margin-bottom:0;">
+      <span>${s.s33Name || s.industry || ''}</span>
+    </div>
+  `;
+
+  document.getElementById('modalBodyScroll').innerHTML = `
+    <div class="modal-metrics">
+      <div class="modal-metric">
+        <div class="modal-metric-lbl">現在株価</div>
+        <div class="modal-metric-val">${s.currentPrice > 0 ? '¥' + s.currentPrice.toLocaleString() : '—'}</div>
+      </div>
+      <div class="modal-metric">
+        <div class="modal-metric-lbl">配当利回り</div>
+        <div class="modal-metric-val ${s.dividendYield >= 3 ? 'green' : ''}">${s.dividendYield > 0 ? s.dividendYield.toFixed(1) + '%' : '—'}</div>
+      </div>
+      <div class="modal-metric">
+        <div class="modal-metric-lbl">PER</div>
+        <div class="modal-metric-val">${s.per > 0 ? s.per + 'x' : '—'}</div>
+      </div>
+      <div class="modal-metric">
+        <div class="modal-metric-lbl">PBR</div>
+        <div class="modal-metric-val">${s.pbr > 0 ? s.pbr + 'x' : '—'}</div>
+      </div>
+      <div class="modal-metric">
+        <div class="modal-metric-lbl">連続維持/増配</div>
+        <div class="modal-metric-val ${s.dividendStreak >= 5 ? 'green' : ''}">${s.dividendStreak > 0 ? s.dividendStreak + '年' : '—'}</div>
+      </div>
+      <div class="modal-metric">
+        <div class="modal-metric-lbl">売上トレンド R²</div>
+        <div class="modal-metric-val ${rt?.r2 > 0.7 ? 'green' : 'red'}">${rt ? rt.r2.toFixed(2) : '—'}</div>
+      </div>
+      <div class="modal-metric">
+        <div class="modal-metric-lbl">利益トレンド R²</div>
+        <div class="modal-metric-val ${pt?.r2 > 0.7 ? 'green' : 'red'}">${pt ? pt.r2.toFixed(2) : '—'}</div>
+      </div>
+      <div class="modal-metric">
+        <div class="modal-metric-lbl">EPS トレンド R²</div>
+        <div class="modal-metric-val ${et?.r2 > 0.7 ? 'green' : (et?.r2 > 0 ? 'red' : '')}">${et?.r2 > 0 ? et.r2.toFixed(2) : '—'}</div>
+      </div>
+    </div>
+
+    <div class="full-chart-section">
+      <div class="full-chart-lbl">売上高 (億円)</div>
+      <div class="full-chart-wrap"><canvas id="modalRev"></canvas></div>
+    </div>
+    <div class="full-chart-section">
+      <div class="full-chart-lbl">営業利益 (億円)</div>
+      <div class="full-chart-wrap"><canvas id="modalProf"></canvas></div>
+    </div>
+    ${(s.epsYears?.length >= 3) ? `
+    <div class="full-chart-section">
+      <div class="full-chart-lbl">EPS（1株利益）</div>
+      <div class="full-chart-wrap"><canvas id="modalEps"></canvas></div>
+    </div>` : ''}
+    ${(s.epsYears?.length >= 3 && s.dividend?.length) ? `
+    <div class="full-chart-section">
+      <div class="full-chart-lbl">配当性向 (%)</div>
+      <div class="full-chart-wrap"><canvas id="modalPayout"></canvas></div>
+    </div>` : ''}
+    <div class="full-chart-section">
+      <div class="full-chart-lbl">配当金 (円)</div>
+      <div class="full-chart-wrap"><canvas id="modalDiv"></canvas></div>
+    </div>
+    <div class="full-chart-section">
+      <div class="full-chart-lbl">配当利回り推移 (各年の平均株価ベース)</div>
+      <div class="full-chart-wrap"><canvas id="modalYield"></canvas></div>
+    </div>
+  `;
+
+  document.getElementById('modal').style.display = 'flex';
+  document.getElementById('modalBodyScroll').scrollTop = 0;
+
+  const opts = (color) => ({
+    type: 'line',
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ctx.parsed.y != null ? ` ${ctx.parsed.y.toLocaleString()}` : ' —' } } },
+      scales: {
+        x: { grid: { color: '#d8d2c4' }, ticks: { font: { family: "'DM Mono', monospace", size: 11 }, color: '#9c9489' } },
+        y: { grid: { color: '#d8d2c4' }, ticks: { font: { family: "'DM Mono', monospace", size: 11 }, color: '#9c9489' } }
+      }
+    },
+    data: { datasets: [{ borderColor: color, borderWidth: 2.5, pointBackgroundColor: color,
+      pointRadius: 4, tension: 0.3, fill: true, backgroundColor: color + '18',
+      spanGaps: false }] }
+  });
+
+  const allYears = [
+    ...(s.years || []),
+    ...(s.epsYears || []),
+    ...(s.dividendYears || [])
+  ];
+  const minYear = allYears.length ? Math.min(...allYears) : 2008;
+  const maxYear = allYears.length ? Math.max(...allYears) : 2026;
+  const commonLabels = [];
+  for (let y = minYear; y <= maxYear; y++) commonLabels.push(y);
+
+  const alignData = (years, values) => {
+    if (!years || !values) return commonLabels.map(() => null);
+    const map = {};
+    years.forEach((y, i) => { map[y] = values[i]; });
+    return commonLabels.map(y => map[y] != null ? map[y] : null);
+  };
+
+  const makeChart = (id, years, data, color) => {
+    const cfg = opts(color);
+    cfg.data.labels = commonLabels;
+    cfg.data.datasets[0].data = alignData(years, data);
+    modalCharts[id] = new Chart(document.getElementById(id), cfg);
+  };
+
+  makeChart('modalRev', s.years, s.revenue, '#3b7a57');
+  makeChart('modalProf', s.years, s.profit, '#2b5c8a');
+  if (s.epsYears?.length >= 3) makeChart('modalEps', s.epsYears, s.epsValues, '#8b5e3c');
+
+  if (s.epsYears?.length >= 3 && s.dividend?.length) {
+    const epsMap = {};
+    s.epsYears.forEach((y, i) => { epsMap[y] = s.epsValues[i]; });
+    const divYears = s.dividendYears || s.years;
+    const payoutYears = [], payoutValues = [];
+    divYears.forEach((y, i) => {
+      const eps = epsMap[y];
+      const div = s.dividend[i];
+      if (eps != null && eps > 0 && div != null && div > 0) {
+        payoutYears.push(y);
+        payoutValues.push(Math.round(div / eps * 100));
+      }
+    });
+    if (payoutYears.length >= 3) {
+      const cfg = opts('#7b5ea7');
+      cfg.data.labels = commonLabels;
+      cfg.data.datasets[0].data = alignData(payoutYears, payoutValues);
+      cfg.options.plugins.tooltip.callbacks.label = ctx => ctx.parsed.y != null ? ` ${ctx.parsed.y}%` : ' —';
+      cfg.options.scales.y.ticks.callback = v => v + '%';
+
+      cfg.options.scales.y.min = 0;
+      cfg.options.scales.y.max = 100;
+
+      cfg.options.plugins.annotation = undefined;
+      modalCharts['modalPayout'] = new Chart(document.getElementById('modalPayout'), cfg);
+    }
+  }
+
+  if (s.dividend?.length) makeChart('modalDiv', s.dividendYears || s.years, s.dividend, '#c84b2f');
+
+  if (s.dividend?.length && s.currentPrice) {
+    const yieldYears = s.dividendYears || s.years;
+    const yieldValues = s.dividend.map((d, i) => {
+      const pastPrice = (s.yearlyPrices && s.yearlyPrices[i] > 0) ? s.yearlyPrices[i] : s.currentPrice;
+      return parseFloat(((d / pastPrice) * 100).toFixed(2));
+    });
+    const currentYield = s.dividendYield || 0;
+
+    modalCharts['modalYield'] = new Chart(document.getElementById('modalYield'), {
+      type: 'bar',
+      data: {
+        labels: commonLabels,
+        datasets: [{
+          data: alignData(yieldYears, yieldValues),
+          backgroundColor: 'rgba(59, 122, 87, 0.4)',
+          borderColor: '#3b7a57',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ctx.parsed.y != null ? ` ${ctx.parsed.y}%` : ' —' } },
+          annotation: {
+            annotations: {
+              line1: {
+                type: 'line',
+                yMin: currentYield,
+                yMax: currentYield,
+                borderColor: '#c84b2f',
+                borderWidth: 2,
+                borderDash: [5, 5],
+                label: {
+                  display: true,
+                  content: `現在: ${currentYield}%`,
+                  position: 'end',
+                  backgroundColor: '#c84b2f',
+                  color: '#fff',
+                  font: { family: "'DM Mono', monospace", size: 10 }
+                }
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { color: '#d8d2c4' }, ticks: { font: { family: "'DM Mono', monospace", size: 11 }, color: '#9c9489' } },
+          y: { grid: { color: '#d8d2c4' }, ticks: { font: { family: "'DM Mono', monospace", size: 11 }, color: '#9c9489', callback: v => v + '%' } }
+        }
+      }
+    });
+  }
+}
+
+function closeModal(e) {
+  if (e.target.id === 'modal') {
+    document.getElementById('modal').style.display = 'none';
+    currentModalCode = null;
+  }
+}
+
+function setStatus(type, text) {
+  const pill = document.getElementById('statusPill');
+  pill.className = 'status-pill ' + type;
+  document.getElementById('statusText').textContent = text;
+}
+
+window.addEventListener('load', () => {
+  loadStaticData();
+});
+
+function showSkeletons() {
+  const grid = document.getElementById('cardGrid');
+  grid.innerHTML = Array(6).fill('<div class="skeleton skel-card"></div>').join('');
+  document.getElementById('resultNum').textContent = '...';
+}
+</script>
+</body>
+</html>
