@@ -524,8 +524,15 @@ def fetch_stock_data(code, name_hint=""):
             except Exception:
                 latest_annual_div = div_values[-1] if div_values else 0
 
+        # 直近配当が前年比3倍超 → yfinance 重複集計バグ、前年値で補正
+        if len(div_values) >= 2 and div_values[-2] > 0 and div_values[-1] > div_values[-2] * 3:
+            div_values[-1] = div_values[-2]
+            latest_annual_div = div_values[-1]
+
         if current_price > 0 and latest_annual_div > 0:
             div_yield = round(latest_annual_div / current_price * 100, 2)
+            if div_yield > 100:  # 総支払額バグ
+                div_yield = 0
         else:
             div_yield = 0
 
