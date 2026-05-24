@@ -15,6 +15,7 @@ on:
           - prices
           - full
           - irbank
+          - irbank-force
 
 jobs:
   update:
@@ -54,6 +55,14 @@ jobs:
         if: github.event.inputs.mode == 'irbank'
         env:
           ENRICH_IRBANK: '1'
+          JQUANTS_REFRESH_TOKEN: ${{ secrets.JQUANTS_REFRESH_TOKEN }}
+        run: python scripts/update_data.py
+
+      - name: Update data (ir-bank force re-enrich)
+        if: github.event.inputs.mode == 'irbank-force'
+        env:
+          ENRICH_IRBANK: '1'
+          FORCE_IRBANK: '1'
           JQUANTS_REFRESH_TOKEN: ${{ secrets.JQUANTS_REFRESH_TOKEN }}
         run: python scripts/update_data.py
 
