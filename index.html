@@ -528,8 +528,19 @@ header .status-pill.error { color: var(--accent); }
     </div>
 
     <div class="update-info">
-      🔄 データは <b>GitHub Actions</b> によって<br>
-      <b>毎週日曜 00:00 UTC</b>(月曜 09:00 JST) に<br>自動更新されます。
+      🔄 <b>毎週日曜 00:00 UTC</b>(月曜 09:00 JST) に<br>
+      GitHub Actionsで自動更新。
+    </div>
+
+    <div style="display:flex; gap:6px; margin-top:8px;">
+      <button class="sort-btn" style="flex:1;" onclick="reloadCache()" title="GitHubから最新のJSONを再取得">
+        ↻ データ再読込
+      </button>
+      <a class="sort-btn" style="flex:1; text-align:center; text-decoration:none;"
+         href="https://github.com/kokitwo-cell/japan-stock-screener/actions/workflows/update-data.yml"
+         target="_blank" rel="noopener" title="GitHub Actionsで更新ワークフローを手動実行">
+        ⚙ 手動更新
+      </a>
     </div>
 
     <button class="run-btn" id="runBtn" onclick="runScreen()" style="margin-top:8px;">
@@ -739,6 +750,11 @@ async function loadStaticData() {
     setStatus('error', `データ読み込み失敗: ${e.message}`);
     console.error(e);
   }
+}
+
+async function reloadCache() {
+  await loadStaticData();
+  if (allResults.length) runScreen();
 }
 
 const filters = {

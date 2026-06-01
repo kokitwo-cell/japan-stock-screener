@@ -600,6 +600,12 @@ def fetch_irbank_financials(code):
         except StopIteration:
             return None
         eps_idx = next((i for i, h in enumerate(header) if h == "EPS"), None)
+        # 「配当」を含み「配当性向」「配当利回」を含まない列（1株当たり年間配当, 円）
+        div_idx = next(
+            (i for i, h in enumerate(header)
+             if "配当" in h and "性向" not in h and "利回" not in h),
+            None,
+        )
 
         def parse_jpy(s):
             s = s.strip().replace(",", "").replace(" ", "")
@@ -619,7 +625,11 @@ def fetch_irbank_financials(code):
             try: return float(re.sub(r"[^\d.\-]", "", s))
             except: return None
 
-        years, revs, profs, epss = [], [], [], []
+        def parse_div(s):
+            v = parse_float(s)
+            return round(v) if v is not None else None
+
+        years, revs, profs, epss, divs = [], [], [], [], []
         for row in rows[1:]:
             cells = row.find_all(["th", "td"])
             if len(cells) <= max(rev_idx, prof_idx): continue
@@ -630,22 +640,28 @@ def fetch_irbank_financials(code):
             rv = parse_jpy(cells[rev_idx].get_text(strip=True))
             pf = parse_jpy(cells[prof_idx].get_text(strip=True))
             ep = parse_float(cells[eps_idx].get_text(strip=True)) if eps_idx and len(cells) > eps_idx else None
+            dv = parse_div(cells[div_idx].get_text(strip=True)) if div_idx is not None and len(cells) > div_idx else None
             if rv is not None and pf is not None and rv != 0:
                 years.append(yr)
                 revs.append(rv)
                 profs.append(pf)
                 epss.append(ep)
+                divs.append(dv)
 
         if len(years) < 5: return None
 
-        combined = sorted(zip(years, revs, profs, epss))
+        combined = sorted(zip(years, revs, profs, epss, divs))
         years = [x[0] for x in combined]
         revs  = [x[1] for x in combined]
         profs = [x[2] for x in combined]
         epss  = [x[3] for x in combined]
+        divs  = [x[4] for x in combined]
 
         eps_clean_years  = [years[i] for i, v in enumerate(epss) if v is not None]
         eps_clean_values = [v for v in epss if v is not None]
+
+        div_clean_years  = [years[i] for i, v in enumerate(divs) if v is not None]
+        div_clean_values = [v for v in divs if v is not None]
 
         return {
             "years": years,
@@ -654,6 +670,8 @@ def fetch_irbank_financials(code):
             "eps": epss,
             "epsYears": eps_clean_years,
             "epsValues": eps_clean_values,
+            "dividendYears": div_clean_years,
+            "dividend": div_clean_values,
         }
     except Exception:
         return None
@@ -779,7 +797,11 @@ def update_prices_only(cache):
 
 def enrich_irbank(cache):
     """ir-bank から長期業績データを補完"""
-    targets = [code for code, d in cache.items() if not d.get("irbank_enriched")]
+    force = os.environ.get("FORCE_IRBANK") == "1"
+    if force:
+        targets = list(cache.keys())
+    else:
+        targets = [code for code, d in cache.items() if not d.get("irbank_enriched")]
     total = len(targets)
     print(f"ir-bank補完: {total}銘柄対象")
     enriched = 0
@@ -797,6 +819,27 @@ def enrich_irbank(cache):
             cache[code]["revenueTrend"] = calc_trend(result["revenue"])
             cache[code]["profitTrend"]  = calc_trend(result["profit"])
             cache[code]["epsTrend"]     = calc_trend(result["epsValues"]) if len(result.get("epsValues", [])) >= 3 else {"slope": 0, "r2": 0, "growthRate": 0}
+
+            # 配当（会計年度ベース、ir-bank 由来。yfinanceの暦年集計より正確）
+            div_vals  = result.get("dividend", []) or []
+            div_years = result.get("dividendYears", []) or []
+            if len(div_vals) >= 2:
+                # 直近10年に絞る
+                div_vals_10  = div_vals[-10:]
+                div_years_10 = div_years[-10:]
+                cache[code]["dividend"]       = div_vals_10
+                cache[code]["dividendYears"]  = div_years_10
+                cache[code]["dividendStreak"] = consecutive_dividend_growth(div_vals_10)
+                cache[code]["noDividendCut"]  = has_no_dividend_cut(div_vals_10) if len(div_vals_10) >= 3 else None
+                # 配当利回りを最新確定値ベースで再計算
+                price = cache[code].get("currentPrice") or 0
+                # 末尾が None/0 のときは一つ前を採用（予想未確定対策）
+                latest_div = next((v for v in reversed(div_vals_10) if v), 0)
+                if price > 0 and latest_div > 0:
+                    yld = round(latest_div / price * 100, 2)
+                    if yld <= 100:
+                        cache[code]["dividendYield"] = yld
+
             cache[code]["irbank_enriched"] = True
             enriched += 1
         if (i + 1) % 50 == 0:
