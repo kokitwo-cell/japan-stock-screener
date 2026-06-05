@@ -567,30 +567,90 @@ def fetch_stock_data(code, name_hint=""):
 # ============================================================
 #  ir-bank 補完
 # ============================================================
-def fetch_irbank_financials(code):
+_IRBANK_DIAG_PRINTED = 0
+_IRBANK_DIAG_MAX = 3
+
+def _fetch_irbank_dividend_page(code, ua_headers):
+    """ir-bank の /dividend ページから 年度 → 1株配当 の辞書を返す"""
     try:
         from bs4 import BeautifulSoup
         import re
-        url = f"https://irbank.net/{code}/results"
-        headers = {
+        resp = requests.get(f"https://irbank.net/{code}/dividend",
+                            headers=ua_headers, timeout=10)
+        if resp.status_code != 200:
+            return {}
+        soup = BeautifulSoup(resp.text, "html.parser")
+        result = {}
+        for table in soup.find_all("table"):
+            rows = table.find_all("tr")
+            if not rows: continue
+            header = [c.get_text(strip=True) for c in rows[0].find_all(["th", "td"])]
+            if not header: continue
+            # 年度列の特定
+            year_idx = next((i for i, h in enumerate(header)
+                             if h in ("年度", "決算期", "期")), None)
+            if year_idx is None: continue
+            # 合計/年間/一株配当 を優先、無ければ「配当」を含む列
+            def _div_col(h):
+                if "配" not in h: return False
+                if any(x in h for x in ("性向", "利回", "総額", "落ち", "落日", "権利", "回数")): return False
+                return True
+            div_idx = next((i for i, h in enumerate(header)
+                            if h in ("合計", "年配", "年間配当") or "1株配" in h or "一株配" in h), None)
+            if div_idx is None:
+                div_idx = next((i for i, h in enumerate(header) if _div_col(h)), None)
+            if div_idx is None: continue
+
+            for row in rows[1:]:
+                cells = row.find_all(["th", "td"])
+                if len(cells) <= max(year_idx, div_idx): continue
+                m = re.match(r"(\d{4})", cells[year_idx].get_text(strip=True))
+                if not m: continue
+                yr = int(m.group(1))
+                s = cells[div_idx].get_text(strip=True).replace(",", "")
+                if not s or s in ("-", "―", "－", "—"): continue
+                try:
+                    v = float(re.sub(r"[^\d.\-]", "", s))
+                    if v >= 0: result[yr] = round(v)
+                except Exception:
+                    continue
+            if result: break  # 最初に当たった有効テーブルを採用
+        return result
+    except Exception:
+        return {}
+
+
+def fetch_irbank_financials(code):
+    global _IRBANK_DIAG_PRINTED
+    try:
+        from bs4 import BeautifulSoup
+        import re
+        ua_headers = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                           "AppleWebKit/537.36 (KHTML, like Gecko) "
                           "Chrome/120.0.0.0 Safari/537.36",
             "Accept-Language": "ja,en;q=0.9",
         }
-        resp = requests.get(url, headers=headers, timeout=10)
+        url = f"https://irbank.net/{code}/results"
+        resp = requests.get(url, headers=ua_headers, timeout=10)
         if resp.status_code != 200:
             return None
         soup = BeautifulSoup(resp.text, "html.parser")
         tables = soup.find_all("table")
         if not tables:
             return None
-        table = tables[0]
-        rows = table.find_all("tr")
-        if not rows:
-            return None
-        header = [c.get_text(strip=True) for c in rows[0].find_all(["th", "td"])]
-        if "年度" not in header or len(header) < 3:
+        # 年度列を含む最初のテーブルを採用（先頭が業績テーブルでない場合に備える）
+        table = None
+        header = None
+        for t in tables:
+            rs = t.find_all("tr")
+            if not rs: continue
+            h = [c.get_text(strip=True) for c in rs[0].find_all(["th", "td"])]
+            if "年度" in h and len(h) >= 3:
+                table, header = t, h
+                rows = rs
+                break
+        if table is None:
             return None
 
         REV_KEYWORDS = ["売上", "完成工事高", "営業収益", "経常収益", "売収", "収益"]
@@ -600,12 +660,14 @@ def fetch_irbank_financials(code):
         except StopIteration:
             return None
         eps_idx = next((i for i, h in enumerate(header) if h == "EPS"), None)
-        # 「配当」を含み「配当性向」「配当利回」を含まない列（1株当たり年間配当, 円）
-        div_idx = next(
-            (i for i, h in enumerate(header)
-             if "配当" in h and "性向" not in h and "利回" not in h),
-            None,
-        )
+        # 「配」を含み配当性向/配当利回/配当金総額/権利落ち等を除外した列（1株当たり年間配当, 円）
+        # ir-bankの列名例: "配当", "1株配", "年配", "配当金"
+        def _is_div_header(h):
+            if "配" not in h:
+                return False
+            ng = ("性向", "利回", "総額", "落ち", "落日", "権利", "予想増配率")
+            return not any(n in h for n in ng)
+        div_idx = next((i for i, h in enumerate(header) if _is_div_header(h)), None)
 
         def parse_jpy(s):
             s = s.strip().replace(",", "").replace(" ", "")
@@ -662,6 +724,16 @@ def fetch_irbank_financials(code):
 
         div_clean_years  = [years[i] for i, v in enumerate(divs) if v is not None]
         div_clean_values = [v for v in divs if v is not None]
+
+        # /results の配当列が空/未検出のときは /dividend ページから補完
+        if not div_clean_values:
+            div_map = _fetch_irbank_dividend_page(code, ua_headers)
+            if div_map:
+                div_clean_years  = sorted(div_map.keys())
+                div_clean_values = [div_map[y] for y in div_clean_years]
+            elif _IRBANK_DIAG_PRINTED < _IRBANK_DIAG_MAX:
+                _IRBANK_DIAG_PRINTED += 1
+                print(f"  [diag] {code} dividend extraction failed. /results header={header} div_idx={div_idx}")
 
         return {
             "years": years,
@@ -751,6 +823,7 @@ def update_prices_only(cache):
     total = len(codes)
     print(f"株価更新: {total}銘柄")
     updated = 0
+    prices_updated_at = datetime.now().isoformat()
     import pandas as pd
 
     for i, code in enumerate(codes):
@@ -780,6 +853,7 @@ def update_prices_only(cache):
                 latest_div = div_vals[-1] if div_vals else 0
 
             cache[code]["currentPrice"] = price
+            cache[code]["pricesUpdatedAt"] = prices_updated_at
             if latest_div > 0:
                 cache[code]["dividendYield"] = round(latest_div / price * 100, 2)
             updated += 1
@@ -873,6 +947,9 @@ def main():
             print("❌ 既存キャッシュなし。先にフルフェッチが必要です")
             sys.exit(1)
         enrich_irbank(cache)
+        # 配当を更新したあとに株価も最新化（dividendYield を最新株価ベースで再計算）
+        print("\n--- 株価も最新化します ---")
+        update_prices_only(cache)
     else:
         codes = load_tse_codes()
         if not codes:

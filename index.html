@@ -525,6 +525,10 @@ header .status-pill.error { color: var(--accent); }
         <span>最終更新</span>
         <span id="cacheUpdated" style="color:var(--ink2);font-size:10px">—</span>
       </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+        <span>株価更新</span>
+        <span id="pricesUpdated" style="color:var(--ink2);font-size:10px">—</span>
+      </div>
     </div>
 
     <div class="update-info">
@@ -740,10 +744,21 @@ async function loadStaticData() {
 
     document.getElementById('totalCodes').textContent = TSE_CODES.length ? `${TSE_CODES.length}社` : '—';
     document.getElementById('cacheCount').textContent = `${Object.keys(STOCK_CACHE).length}銘柄`;
+    const fmtDt = (iso) => {
+      const d = new Date(iso);
+      return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    };
     if (CACHE_SAVED_AT) {
-      const d = new Date(CACHE_SAVED_AT);
-      document.getElementById('cacheUpdated').textContent =
-        `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      document.getElementById('cacheUpdated').textContent = fmtDt(CACHE_SAVED_AT);
+    }
+    // 個別銘柄の pricesUpdatedAt のうち最新のものを採用
+    let latestPriceTs = null;
+    for (const k in STOCK_CACHE) {
+      const t = STOCK_CACHE[k].pricesUpdatedAt;
+      if (t && (!latestPriceTs || t > latestPriceTs)) latestPriceTs = t;
+    }
+    if (latestPriceTs) {
+      document.getElementById('pricesUpdated').textContent = fmtDt(latestPriceTs);
     }
     setStatus('done', `${Object.keys(STOCK_CACHE).length}銘柄読み込み完了`);
   } catch (e) {
