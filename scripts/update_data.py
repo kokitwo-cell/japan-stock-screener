@@ -639,35 +639,8 @@ def fetch_irbank_financials(code):
         tables = soup.find_all("table")
         if not tables:
             return None
-        # 年度列を含む最初のテーブルを採用（先頭が業績テーブルでない場合に備える）
-        table = None
-        header = None
-        for t in tables:
-            rs = t.find_all("tr")
-            if not rs: continue
-            h = [c.get_text(strip=True) for c in rs[0].find_all(["th", "td"])]
-            if "年度" in h and len(h) >= 3:
-                table, header = t, h
-                rows = rs
-                break
-        if table is None:
-            return None
 
         REV_KEYWORDS = ["売上", "完成工事高", "営業収益", "経常収益", "売収", "収益"]
-        try:
-            rev_idx  = next(i for i, h in enumerate(header) if any(k in h for k in REV_KEYWORDS))
-            prof_idx = next(i for i, h in enumerate(header) if "営利" in h)
-        except StopIteration:
-            return None
-        eps_idx = next((i for i, h in enumerate(header) if h == "EPS"), None)
-        # 「配」を含み配当性向/配当利回/配当金総額/権利落ち等を除外した列（1株当たり年間配当, 円）
-        # ir-bankの列名例: "配当", "1株配", "年配", "配当金"
-        def _is_div_header(h):
-            if "配" not in h:
-                return False
-            ng = ("性向", "利回", "総額", "落ち", "落日", "権利", "予想増配率")
-            return not any(n in h for n in ng)
-        div_idx = next((i for i, h in enumerate(header) if _is_div_header(h)), None)
 
         def parse_jpy(s):
             s = s.strip().replace(",", "").replace(" ", "")
@@ -687,12 +660,40 @@ def fetch_irbank_financials(code):
             try: return float(re.sub(r"[^\d.\-]", "", s))
             except: return None
 
-        def parse_div(s):
-            v = parse_float(s)
-            return round(v) if v is not None else None
+        # 業績テーブル(売上+営利を持つ)と配当テーブル(一株配当を持つ)を別々に特定
+        fin_table = fin_header = fin_rows = None
+        div_table = div_header = div_rows = div_col_idx = None
+        for t in tables:
+            rs = t.find_all("tr")
+            if not rs: continue
+            h = [c.get_text(strip=True) for c in rs[0].find_all(["th", "td"])]
+            if "年度" not in h or len(h) < 3:
+                continue
+            if fin_table is None:
+                has_rev = any(any(k in c for k in REV_KEYWORDS) for c in h)
+                has_prof = any("営利" in c for c in h)
+                if has_rev and has_prof:
+                    fin_table, fin_header, fin_rows = t, h, rs
+                    continue
+            if div_table is None:
+                # 「一株配当」「1株配当」を最優先で採用
+                idx = next((i for i, c in enumerate(h) if c in ("一株配当", "1株配当", "1株配", "年間配当")), None)
+                if idx is not None:
+                    div_table, div_header, div_rows, div_col_idx = t, h, rs, idx
 
-        years, revs, profs, epss, divs = [], [], [], [], []
-        for row in rows[1:]:
+        if fin_table is None:
+            return None
+
+        try:
+            rev_idx  = next(i for i, h in enumerate(fin_header) if any(k in h for k in REV_KEYWORDS))
+            prof_idx = next(i for i, h in enumerate(fin_header) if "営利" in h)
+        except StopIteration:
+            return None
+        eps_idx = next((i for i, h in enumerate(fin_header) if h == "EPS"), None)
+
+        # 業績/EPSを抽出
+        years, revs, profs, epss = [], [], [], []
+        for row in fin_rows[1:]:
             cells = row.find_all(["th", "td"])
             if len(cells) <= max(rev_idx, prof_idx): continue
             yr_str = cells[0].get_text(strip=True)
@@ -702,22 +703,33 @@ def fetch_irbank_financials(code):
             rv = parse_jpy(cells[rev_idx].get_text(strip=True))
             pf = parse_jpy(cells[prof_idx].get_text(strip=True))
             ep = parse_float(cells[eps_idx].get_text(strip=True)) if eps_idx and len(cells) > eps_idx else None
-            dv = parse_div(cells[div_idx].get_text(strip=True)) if div_idx is not None and len(cells) > div_idx else None
             if rv is not None and pf is not None and rv != 0:
                 years.append(yr)
                 revs.append(rv)
                 profs.append(pf)
                 epss.append(ep)
-                divs.append(dv)
 
         if len(years) < 5: return None
 
-        combined = sorted(zip(years, revs, profs, epss, divs))
+        # 配当を別テーブルから抽出（年度→1株配当の辞書）
+        div_by_year = {}
+        if div_table is not None:
+            for row in div_rows[1:]:
+                cells = row.find_all(["th", "td"])
+                if len(cells) <= div_col_idx: continue
+                m = re.match(r"(\d{4})", cells[0].get_text(strip=True))
+                if not m: continue
+                yr = int(m.group(1))
+                v = parse_float(cells[div_col_idx].get_text(strip=True))
+                if v is not None and v >= 0:
+                    div_by_year[yr] = round(v)
+
+        combined = sorted(zip(years, revs, profs, epss))
         years = [x[0] for x in combined]
         revs  = [x[1] for x in combined]
         profs = [x[2] for x in combined]
         epss  = [x[3] for x in combined]
-        divs  = [x[4] for x in combined]
+        divs  = [div_by_year.get(y) for y in years]
 
         eps_clean_years  = [years[i] for i, v in enumerate(epss) if v is not None]
         eps_clean_values = [v for v in epss if v is not None]
@@ -733,7 +745,7 @@ def fetch_irbank_financials(code):
                 div_clean_values = [div_map[y] for y in div_clean_years]
             elif _IRBANK_DIAG_PRINTED < _IRBANK_DIAG_MAX:
                 _IRBANK_DIAG_PRINTED += 1
-                print(f"  [diag] {code} dividend extraction failed. /results header={header} div_idx={div_idx}")
+                print(f"  [diag] {code} dividend extraction failed. div_table={'yes' if div_table is not None else 'no'} div_header={div_header}")
 
         return {
             "years": years,
