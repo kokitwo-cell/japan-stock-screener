@@ -16,6 +16,12 @@ on:
           - full
           - irbank
           - irbank-force
+          - diag
+      diag_code:
+        description: 'diag用銘柄コード(例: 7723)'
+        required: false
+        default: '7723'
+        type: string
 
 jobs:
   update:
@@ -66,7 +72,14 @@ jobs:
           JQUANTS_REFRESH_TOKEN: ${{ secrets.JQUANTS_REFRESH_TOKEN }}
         run: python scripts/update_data.py
 
+      - name: Diagnose ir-bank page structure
+        if: github.event.inputs.mode == 'diag'
+        env:
+          DIAG_IRBANK: ${{ github.event.inputs.diag_code }}
+        run: python scripts/update_data.py
+
       - name: Commit and push changes
+        if: github.event.inputs.mode != 'diag'
         run: |
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
