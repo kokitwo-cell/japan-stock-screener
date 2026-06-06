@@ -639,7 +639,6 @@ def fetch_irbank_financials(code):
         tables = soup.find_all("table")
         if not tables:
             return None
-
         REV_KEYWORDS = ["売上", "完成工事高", "営業収益", "経常収益", "売収", "収益"]
 
         def parse_jpy(s):
