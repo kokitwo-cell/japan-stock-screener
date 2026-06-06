@@ -925,6 +925,39 @@ def enrich_irbank(cache):
 
 
 # ============================================================
+def diag_irbank(code):
+    """1銘柄のir-bank /results /dividend ページ構造をダンプ（パーサ調整用）"""
+    from bs4 import BeautifulSoup
+    ua_headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "ja,en;q=0.9",
+    }
+    for path in ("results", "dividend"):
+        url = f"https://irbank.net/{code}/{path}"
+        print(f"\n=========== {url} ===========")
+        try:
+            r = requests.get(url, headers=ua_headers, timeout=10)
+            print(f"status: {r.status_code}, len={len(r.text)}")
+            if r.status_code != 200:
+                continue
+            soup = BeautifulSoup(r.text, "html.parser")
+            tables = soup.find_all("table")
+            print(f"tables found: {len(tables)}")
+            for ti, t in enumerate(tables[:6]):
+                rs = t.find_all("tr")
+                if not rs: continue
+                header = [c.get_text(strip=True) for c in rs[0].find_all(["th","td"])]
+                print(f"\n--- table[{ti}] header ({len(rs)} rows) ---")
+                print("  HEADER:", header)
+                for ri, row in enumerate(rs[1:8]):
+                    cells = [c.get_text(strip=True) for c in row.find_all(["th","td"])]
+                    print(f"  row[{ri}]:", cells)
+        except Exception as e:
+            print(f"ERROR: {e}")
+
+
 def main():
     print("=" * 55)
     print("  日本株スクリーナー - データ更新")
@@ -936,6 +969,11 @@ def main():
     update_only = os.environ.get("UPDATE_PRICES_ONLY") == "1"
     do_irbank = os.environ.get("ENRICH_IRBANK") == "1"
     fetch_limit = int(os.environ.get("FETCH_LIMIT") or 0) or None
+    diag_code = os.environ.get("DIAG_IRBANK") or ""
+
+    if diag_code:
+        diag_irbank(diag_code.strip())
+        return
 
     if update_only:
         if not cache:
