@@ -86,7 +86,25 @@ jobs:
           git add data/
           if git diff --staged --quiet; then
             echo "変更なし"
-          else
-            git commit -m "chore: update stock data ($(date -u +%Y-%m-%d))"
-            git push
+            exit 0
           fi
+          git commit -m "chore: update stock data ($(date -u +%Y-%m-%d))"
+          # 長時間ジョブ中に別run(週次scheduleなど)が先に push しているとnon-fast-forwardで弾かれる。
+          # その場合は origin/main を取り込んで、データファイルは ours (= 今書いたもの)を優先して rebase 再push。
+          for attempt in 1 2 3 4 5; do
+            if git push; then
+              echo "push成功 (attempt=$attempt)"
+              exit 0
+            fi
+            echo "push reject (attempt=$attempt) → fetch & rebase --strategy-option=ours"
+            git fetch origin main
+            git rebase --strategy-option=ours origin/main || {
+              echo "rebase失敗 (attempt=$attempt)"
+              git rebase --abort || true
+              sleep 5
+              continue
+            }
+            sleep 5
+          done
+          echo "ERROR: 5回試行してもpushできませんでした"
+          exit 1
