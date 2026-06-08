@@ -2,8 +2,8 @@ name: Update stock data
 
 on:
   schedule:
-    # 毎週日曜 00:00 UTC (月曜 09:00 JST)
-    - cron: '0 0 * * 0'
+    # 平日 10:00 UTC (= 19:00 JST、東証大引け 15:00 JST の4時間後) に株価のみ更新
+    - cron: '0 10 * * 1-5'
   workflow_dispatch:
     inputs:
       mode:
