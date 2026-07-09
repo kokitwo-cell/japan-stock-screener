@@ -535,19 +535,6 @@ header .status-pill.error { color: var(--accent); }
   background: var(--bg2);
 }
 
-.sens-bar {
-  height: 8px;
-  border-radius: 4px;
-  background: #e8c9a8;
-  overflow: hidden;
-  margin-top: 8px;
-}
-.sens-bar span {
-  display: block;
-  height: 100%;
-  background: var(--accent2);
-  border-radius: 4px 0 0 4px;
-}
 .sens-chip {
   display: inline-block;
   font-family: var(--mono);
@@ -595,18 +582,30 @@ header .status-pill.error { color: var(--accent); }
 .pf-legend-row { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .pf-legend-row .sw { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
 .pf-legend-row .nm { overflow: hidden; text-overflow: ellipsis; color: var(--ink2); }
-.pf-legend-row .pc { font-family: var(--mono); color: var(--ink); margin-left: auto; }
+.pf-legend-row .pc { font-family: var(--mono); color: var(--ink); }
+.pf-legend-head {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  padding-bottom: 2px;
+  margin-top: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.pf-legend.two-col .pf-legend-head { grid-column: 1 / -1; }
 .pf-legend-row .dl { font-family: var(--mono); font-size: 10px; }
 .pf-bar-wrap { position: relative; height: 320px; }
 .pf-bar-wrap.short { height: 260px; }
 
 .pf-table-scroll { overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
-.pf-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 900px; }
+.pf-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 1000px; }
 .pf-table th {
   font-family: var(--mono); font-size: 10px; letter-spacing: 1px; font-weight: 400;
   background: var(--ink); color: var(--bg);
   padding: 8px 10px; text-align: right; white-space: nowrap;
 }
+.pf-table th.sortable { cursor: pointer; user-select: none; }
+.pf-table th.sortable:hover { color: #f5a623; }
 .pf-table th:nth-child(1), .pf-table th:nth-child(2), .pf-table th:nth-child(3) { text-align: left; }
 .pf-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); text-align: right; font-family: var(--mono); white-space: nowrap; }
 .pf-table td.l { text-align: left; font-family: var(--sans); }
@@ -1772,7 +1771,9 @@ function enrichHolding(h) {
     cost: avgPrice * shares,
     value: price * shares,
     annualDiv, afterTaxDiv,
+    pl: price * shares - avgPrice * shares,
     yield: price > 0 ? divPS / price * 100 : 0,
+    yieldCost: avgPrice > 0 ? divPS / avgPrice * 100 : 0,
     inCache: !!s,
     isSim: !!h.isSim,
   };
@@ -1831,10 +1832,11 @@ function sectorColorMap(sectorsList) {
 }
 
 // 東証33業種を折りたたまず全業種をスライス表示する
+// ディフェンシブ→景気敏感のグループ順（各グループ内は評価額降順）に並べ、外側リングと境界を揃える
 function foldSectors(sectors, colorMap) {
   return Object.entries(sectors)
-    .sort((a, b) => b[1] - a[1])
-    .map(([name, v]) => ({ name, v, color: colorMap[name] || PF_OTHER_COLOR }));
+    .map(([name, v]) => ({ name, v, color: colorMap[name] || PF_OTHER_COLOR, sens: sectorSensitivity(name) }))
+    .sort((a, b) => a.sens === b.sens ? b.v - a.v : (a.sens === 'defensive' ? -1 : 1));
 }
 
 function destroyPfCharts() {
@@ -1883,22 +1885,14 @@ function renderPortfolio() {
       <div class="pf-tile-sub">税引前 ${fmtYen(base.totalDiv)} ・ 月あたり ${fmtYen(base.totalDivAT / 12)}</div>
     </div>
     <div class="pf-tile">
-      <div class="pf-tile-lbl">配当利回り</div>
-      <div class="pf-tile-val green">${fmtPct(base.yieldNow)}</div>
-      <div class="pf-tile-sub">取得ベース ${fmtPct(base.yieldCost)}</div>
+      <div class="pf-tile-lbl">配当利回り（取得ベース）</div>
+      <div class="pf-tile-val green">${fmtPct(base.yieldCost)}</div>
+      <div class="pf-tile-sub">現在値ベース ${fmtPct(base.yieldNow)}</div>
     </div>
     <div class="pf-tile">
       <div class="pf-tile-lbl">最大業種比率</div>
       <div class="pf-tile-val">${fmtPct(base.topSectorPct, 1)}</div>
       <div class="pf-tile-sub">${base.topSectorName}</div>
-    </div>
-    <div class="pf-tile">
-      <div class="pf-tile-lbl">ディフェンシブ比率</div>
-      <div class="pf-tile-val" style="color:var(--accent2)">${fmtPct(base.defensivePct, 1)}</div>
-      <div class="sens-bar" title="ディフェンシブ ${fmtPct(base.defensivePct, 1)} / 景気敏感 ${fmtPct(100 - base.defensivePct, 1)}">
-        <span style="width:${base.defensivePct}%"></span>
-      </div>
-      <div class="pf-tile-sub">景気敏感 ${fmtPct(100 - base.defensivePct, 1)}</div>
     </div>
   </div>`;
 
@@ -1923,7 +1917,7 @@ function renderPortfolio() {
       <div class="sim-compare-grid">
         ${metric('評価額合計', base.totalValue, after.totalValue, fmtYen, fmtSignedYen)}
         ${metric('年間配当（税引後）', base.totalDivAT, after.totalDivAT, fmtYen, d => fmtSignedYen(d) + '/年')}
-        ${metric('配当利回り', base.yieldNow, after.yieldNow, v => fmtPct(v), d => (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(2) + 'pt')}
+        ${metric('配当利回り（取得ベース）', base.yieldCost, after.yieldCost, v => fmtPct(v), d => (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(2) + 'pt')}
         ${metric('最大業種比率', base.topSectorPct, after.topSectorPct, v => fmtPct(v, 1) + '（' + (v === base.topSectorPct ? base.topSectorName : after.topSectorName) + '）', d => (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(1) + 'pt')}
         ${metric('ディフェンシブ比率', base.defensivePct, after.defensivePct, v => fmtPct(v, 1), d => (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(1) + 'pt')}
       </div>
@@ -1932,16 +1926,26 @@ function renderPortfolio() {
 
   // --- charts ---
   const colorMap = sectorColorMap(after ? [base.sectors, after.sectors] : [base.sectors]);
-  const donutLegend = (folded, total, beforeSectors, beforeTotal) => folded.map(f => {
-    const pct = total > 0 ? f.v / total * 100 : 0;
-    let delta = '';
-    if (beforeSectors) {
-      const bPct = beforeTotal > 0 ? (beforeSectors[f.name] || 0) / beforeTotal * 100 : 0;
-      const d = pct - bPct;
-      if (Math.abs(d) >= 0.05) delta = `<span class="dl ${d > 0 ? 'delta-up' : 'delta-down'}">${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}pt</span>`;
-    }
-    return `<div class="pf-legend-row"><span class="sw" style="background:${f.color}"></span><span class="nm" title="${f.name}">${f.name}</span><span class="pc">${pct.toFixed(1)}%</span>${delta}</div>`;
-  }).join('');
+  const donutLegend = (folded, total, beforeSectors, beforeTotal) => {
+    const row = f => {
+      const pct = total > 0 ? f.v / total * 100 : 0;
+      let delta = '';
+      if (beforeSectors) {
+        const bPct = beforeTotal > 0 ? (beforeSectors[f.name] || 0) / beforeTotal * 100 : 0;
+        const d = pct - bPct;
+        if (Math.abs(d) >= 0.05) delta = `<span class="dl ${d > 0 ? 'delta-up' : 'delta-down'}">${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}pt</span>`;
+      }
+      return `<div class="pf-legend-row"><span class="sw" style="background:${f.color}"></span><span class="nm" title="${f.name}">${f.name}</span><span class="pc">${pct.toFixed(1)}%</span>${delta}</div>`;
+    };
+    const groups = ['defensive', 'cyclical'].map((sens, i) => {
+      const items = folded.filter(f => f.sens === sens);
+      if (!items.length) return '';
+      const gv = items.reduce((a, f) => a + f.v, 0);
+      const gPct = total > 0 ? gv / total * 100 : 0;
+      return `<div class="pf-legend-head" style="color:${SENS_COLORS[sens]}">● ${SENS_LABELS[i]} ${gPct.toFixed(1)}%</div>` + items.map(row).join('');
+    });
+    return groups.join('');
+  };
 
   const baseFolded = foldSectors(base.sectors, colorMap);
   if (after) {
@@ -2049,14 +2053,38 @@ function sectorDeltaRows(base, after, simH) {
     }).join('');
 }
 
+let pfSort = { key: 'value', dir: 'desc' };
+
+function setPfSort(key) {
+  if (pfSort.key === key) {
+    pfSort.dir = pfSort.dir === 'desc' ? 'asc' : 'desc';
+  } else {
+    pfSort = { key, dir: ['code', 'name', 'sector'].includes(key) ? 'asc' : 'desc' };
+  }
+  renderPortfolio();
+}
+
 function holdingsTableHTML(cur) {
   const total = cur.totalValue;
-  const rows = [...cur.rows].sort((a, b) => (b.isSim ? 1 : 0) - (a.isSim ? 1 : 0) || b.value - a.value);
+  const { key, dir } = pfSort;
+  const strKey = ['code', 'name', 'sector'].includes(key);
+  const cmp = (a, b) => {
+    const r = strKey
+      ? String(a[key]).localeCompare(String(b[key]), 'ja')
+      : (a[key] || 0) - (b[key] || 0);
+    return dir === 'asc' ? r : -r;
+  };
+  // 試算行は常に先頭に固定
+  const rows = [...cur.rows.filter(r => r.isSim), ...cur.rows.filter(r => !r.isSim).sort(cmp)];
+  const th = (k, label) => {
+    const arrow = pfSort.key === k ? (pfSort.dir === 'desc' ? ' ▼' : ' ▲') : '';
+    return `<th class="sortable" onclick="setPfSort('${k}')" title="クリックで並び替え">${label}${arrow}</th>`;
+  };
   return `<table class="pf-table">
     <thead><tr>
-      <th>コード</th><th>銘柄名</th><th>業種</th>
-      <th>株数</th><th>うちNISA</th><th>取得単価</th><th>株価</th>
-      <th>評価額</th><th>損益</th><th>年間配当<br>(税引後)</th><th>利回り</th><th>構成比</th><th></th>
+      ${th('code', 'コード')}${th('name', '銘柄名')}${th('sector', '業種')}
+      ${th('shares', '株数')}${th('nisaShares', 'うちNISA')}${th('avgPrice', '取得単価')}${th('price', '株価')}
+      ${th('value', '評価額')}${th('pl', '損益')}${th('afterTaxDiv', '年間配当<br>(税引後)')}${th('yieldCost', '利回り<br>(取得)')}${th('yield', '利回り<br>(現在)')}${th('value', '構成比')}<th></th>
     </tr></thead>
     <tbody>
     ${rows.map(r => {
@@ -2075,6 +2103,7 @@ function holdingsTableHTML(cur) {
         <td>${fmtYen(r.value)}</td>
         <td class="${pl >= 0 ? 'delta-up' : 'delta-down'}">${r.cost > 0 ? `${fmtSignedYen(pl)}<br><span style="font-size:10px">${pl >= 0 ? '+' : '−'}${Math.abs(plPct).toFixed(1)}%</span>` : '—'}</td>
         <td>${fmtYen(r.afterTaxDiv)}</td>
+        <td style="color:var(--accent2);font-weight:500">${r.yieldCost > 0 ? fmtPct(r.yieldCost) : '—'}</td>
         <td>${r.yield > 0 ? fmtPct(r.yield) : '—'}</td>
         <td>${total > 0 ? (r.value / total * 100).toFixed(1) + '%' : '—'}</td>
         <td>${r.isSim ? '' : `<button class="pf-del-btn" onclick="removeHolding(${i})" title="この銘柄を削除">✕</button>`}</td>
@@ -2087,25 +2116,41 @@ function holdingsTableHTML(cur) {
 // ---- charts ----
 const PF_FONT = { family: "'DM Mono', monospace", size: 11 };
 
+const SENS_COLORS = { defensive: '#3b7a57', cyclical: '#b85c00' };
+const SENS_LABELS = ['ディフェンシブ', '景気敏感'];
+
 function drawDonut(id, folded, total) {
   const el = document.getElementById(id);
   if (!el) return;
+  const defTotal = folded.filter(f => f.sens === 'defensive').reduce((a, f) => a + f.v, 0);
   pfCharts[id] = new Chart(el, {
     type: 'doughnut',
     data: {
       labels: folded.map(f => f.name),
-      datasets: [{
-        data: folded.map(f => f.v),
-        backgroundColor: folded.map(f => f.color),
-        borderColor: PF_SURFACE,
-        borderWidth: 2,
-      }]
+      datasets: [
+        { // 外側リング: ディフェンシブ / 景気敏感（内側の業種グループと境界が揃う）
+          data: [defTotal, total - defTotal],
+          backgroundColor: [SENS_COLORS.defensive, SENS_COLORS.cyclical],
+          borderColor: PF_SURFACE,
+          borderWidth: 2,
+          weight: 0.45,
+        },
+        {
+          data: folded.map(f => f.v),
+          backgroundColor: folded.map(f => f.color),
+          borderColor: PF_SURFACE,
+          borderWidth: 2,
+        }
+      ]
     },
     options: {
-      responsive: true, maintainAspectRatio: false, cutout: '64%',
+      responsive: true, maintainAspectRatio: false, cutout: '58%',
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmtYen(ctx.parsed)}（${total > 0 ? (ctx.parsed / total * 100).toFixed(1) : 0}%）` } }
+        tooltip: { callbacks: { label: ctx => {
+          const name = ctx.datasetIndex === 0 ? SENS_LABELS[ctx.dataIndex] : ctx.label;
+          return ` ${name}: ${fmtYen(ctx.parsed)}（${total > 0 ? (ctx.parsed / total * 100).toFixed(1) : 0}%）`;
+        } } }
       }
     }
   });
