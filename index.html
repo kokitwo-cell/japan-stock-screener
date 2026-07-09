@@ -1178,7 +1178,12 @@ function runScreen() {
 
     const select = document.getElementById('s33Filter');
     const industries = [...new Set(allResults.map(s => s.s33Name).filter(Boolean))].sort();
-    select.innerHTML = '<option value="">全業種</option>' + industries.map(i => `<option value="${i}">${i}</option>`).join('');
+    const defInd = industries.filter(i => sectorSensitivity(i) === 'defensive');
+    const cycInd = industries.filter(i => sectorSensitivity(i) === 'cyclical');
+    const opts = list => list.map(i => `<option value="${i}">${i}</option>`).join('');
+    select.innerHTML = '<option value="">全業種</option>'
+      + (defInd.length ? `<optgroup label="🛡 ディフェンシブ">${opts(defInd)}</optgroup>` : '')
+      + (cycInd.length ? `<optgroup label="📈 景気敏感">${opts(cycInd)}</optgroup>` : '');
 
     applyFilters();
 
@@ -1830,7 +1835,6 @@ function computePF(holdings) {
     if (r.sensitivity === 'defensive') t.defVal += r.value;
     sectors[r.sector] = (sectors[r.sector] || 0) + r.value;
   });
-  const topSector = Object.entries(sectors).sort((a, b) => b[1] - a[1])[0];
   return {
     rows, sectors,
     defensivePct: t.value > 0 ? t.defVal / t.value * 100 : 0,
@@ -1840,8 +1844,6 @@ function computePF(holdings) {
     totalDiv: t.div, totalDivAT: t.divAT,
     yieldNow: t.value > 0 ? t.div / t.value * 100 : 0,
     yieldCost: t.cost > 0 ? t.div / t.cost * 100 : 0,
-    topSectorName: topSector ? topSector[0] : '—',
-    topSectorPct: topSector && t.value > 0 ? topSector[1] / t.value * 100 : 0,
     count: rows.length,
   };
 }
@@ -1946,11 +1948,6 @@ function renderPortfolio() {
       <div class="pf-tile-val green">${fmtPct(base.yieldCost)}</div>
       <div class="pf-tile-sub">現在値ベース ${fmtPct(base.yieldNow)}</div>
     </div>
-    <div class="pf-tile">
-      <div class="pf-tile-lbl">最大業種比率</div>
-      <div class="pf-tile-val">${fmtPct(base.topSectorPct, 1)}</div>
-      <div class="pf-tile-sub">${base.topSectorName}</div>
-    </div>
   </div>`;
 
   // --- simulation banner ---
@@ -1992,7 +1989,6 @@ function renderPortfolio() {
         ${metric('評価額合計', base.totalValue, after.totalValue, fmtYen, fmtSignedYen)}
         ${metric('年間配当（税引後）', base.totalDivAT, after.totalDivAT, fmtYen, d => fmtSignedYen(d) + '/年')}
         ${metric('配当利回り（取得ベース）', base.yieldCost, after.yieldCost, v => fmtPct(v), d => (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(2) + 'pt')}
-        ${metric('最大業種比率', base.topSectorPct, after.topSectorPct, v => fmtPct(v, 1) + '（' + (v === base.topSectorPct ? base.topSectorName : after.topSectorName) + '）', d => (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(1) + 'pt')}
         ${metric('ディフェンシブ比率', base.defensivePct, after.defensivePct, v => fmtPct(v, 1), d => (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(1) + 'pt')}
       </div>
     </div>`;
@@ -2049,19 +2045,13 @@ function renderPortfolio() {
     </div>`;
   } else {
     html += `<div class="pf-section">
-      <div class="pf-charts-grid">
-        <div class="pf-chart-box">
-          <h4>業種別構成（評価額ベース）</h4>
-          <div class="pf-donut-flex">
-            <div class="pf-donut-wrap"><canvas id="pfDonutBefore"></canvas>
-              <div class="pf-donut-center"><span class="n">${fmtYen(base.totalValue)}</span><span class="l">${base.count}銘柄</span></div>
-            </div>
-            <div class="pf-legend ${baseFolded.length > 10 ? 'two-col' : ''}">${donutLegend(baseFolded, base.totalValue)}</div>
+      <div class="pf-chart-box">
+        <h4>業種別構成（評価額ベース）</h4>
+        <div class="pf-donut-flex">
+          <div class="pf-donut-wrap"><canvas id="pfDonutBefore"></canvas>
+            <div class="pf-donut-center"><span class="n">${fmtYen(base.totalValue)}</span><span class="l">${base.count}銘柄</span></div>
           </div>
-        </div>
-        <div class="pf-chart-box">
-          <h4>年間配当 Top10（税引後）</h4>
-          <div class="pf-bar-wrap short"><canvas id="pfDivBar"></canvas></div>
+          <div class="pf-legend ${baseFolded.length > 10 ? 'two-col' : ''}">${donutLegend(baseFolded, base.totalValue)}</div>
         </div>
       </div>
     </div>`;
@@ -2069,18 +2059,12 @@ function renderPortfolio() {
 
   if (after) {
     html += `<div class="pf-section">
-      <div class="pf-charts-grid">
-        <div class="pf-chart-box">
-          <h4>年間配当 Top10（税引後 ・ 組入後）</h4>
-          <div class="pf-bar-wrap short"><canvas id="pfDivBar"></canvas></div>
-        </div>
-        <div class="pf-chart-box">
-          <h4>業種別比率の変化</h4>
-          <table class="pf-sector-delta-table">
-            <thead><tr><th>業種</th><th>現在</th><th>組入後</th><th>変化</th></tr></thead>
-            <tbody>${sectorDeltaRows(base, after)}</tbody>
-          </table>
-        </div>
+      <div class="pf-chart-box">
+        <h4>業種別比率の変化</h4>
+        <table class="pf-sector-delta-table">
+          <thead><tr><th>業種</th><th>現在</th><th>組入後</th><th>変化</th></tr></thead>
+          <tbody>${sectorDeltaRows(base, after)}</tbody>
+        </table>
       </div>
     </div>`;
   }
@@ -2096,7 +2080,6 @@ function renderPortfolio() {
   // --- instantiate charts ---
   drawDonut('pfDonutBefore', baseFolded, base.totalValue);
   if (after) drawDonut('pfDonutAfter', foldSectors(after.sectors, colorMap), after.totalValue);
-  drawDivBar(cur);
 }
 
 function updateSellSelect() {
@@ -2204,7 +2187,6 @@ function holdingsTableHTML(cur) {
 }
 
 // ---- charts ----
-const PF_FONT = { family: "'DM Mono', monospace", size: 11 };
 
 const SENS_COLORS = { defensive: '#3b7a57', cyclical: '#b85c00' };
 const SENS_LABELS = ['ディフェンシブ', '景気敏感'];
@@ -2241,30 +2223,6 @@ function drawDonut(id, folded, total) {
           const name = ctx.datasetIndex === 0 ? SENS_LABELS[ctx.dataIndex] : ctx.label;
           return ` ${name}: ${fmtYen(ctx.parsed)}（${total > 0 ? (ctx.parsed / total * 100).toFixed(1) : 0}%）`;
         } } }
-      }
-    }
-  });
-}
-
-function drawDivBar(pf) {
-  const el = document.getElementById('pfDivBar');
-  if (!el) return;
-  const sorted = [...pf.rows].sort((a, b) => b.afterTaxDiv - a.afterTaxDiv).slice(0, 10);
-  pfCharts['pfDivBar'] = new Chart(el, {
-    type: 'bar',
-    data: {
-      labels: sorted.map(r => `${r.name}${r.isSim ? '（試算）' : ''}`),
-      datasets: [{ data: sorted.map(r => r.afterTaxDiv), backgroundColor: sorted.map(r => r.isSim ? PF_SIM_COLOR : '#1baf7a'), borderRadius: 4, barPercentage: 0.7 }]
-    },
-    options: {
-      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: ctx => ` ${fmtYen(ctx.parsed.x)}/年` } }
-      },
-      scales: {
-        x: { grid: { color: '#e1e0d9' }, ticks: { font: PF_FONT, color: '#898781', callback: v => (v / 10000) + '万' } },
-        y: { grid: { display: false }, ticks: { font: { family: "'Zen Kaku Gothic New', sans-serif", size: 11 }, color: '#52514e' } }
       }
     }
   });
