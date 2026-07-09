@@ -493,6 +493,157 @@ header .status-pill.error { color: var(--accent); }
   line-height: 1.6;
 }
 .update-info b { color: var(--accent2); }
+
+/* ===== TABS ===== */
+.header-tabs { display: flex; gap: 4px; }
+.tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink3);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 2px;
+  padding: 7px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.tab-btn:hover { color: var(--bg); }
+.tab-btn.active { background: #2e2c28; color: var(--bg); border-color: #4a463f; }
+
+/* ===== PORTFOLIO ===== */
+.pf-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.pf-tile {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.pf-tile-lbl { font-family: var(--mono); font-size: 9px; letter-spacing: 1px; color: var(--ink3); margin-bottom: 6px; }
+.pf-tile-val { font-family: var(--mono); font-size: 20px; font-weight: 500; color: var(--ink); line-height: 1.2; }
+.pf-tile-sub { font-family: var(--mono); font-size: 11px; color: var(--ink3); margin-top: 4px; }
+.pf-tile-val.green, .delta-up { color: var(--accent2); }
+.pf-tile-val.red, .delta-down { color: var(--accent); }
+.delta-chip {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg2);
+}
+
+.pf-section { margin-bottom: 26px; }
+.pf-section-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--ink3);
+  margin-bottom: 10px;
+  border-left: 3px solid var(--accent3);
+  padding-left: 8px;
+}
+.pf-charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.pf-chart-box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  min-width: 0;
+}
+.pf-chart-box h4 { font-family: var(--mono); font-size: 11px; letter-spacing: 1px; color: var(--ink2); font-weight: 400; margin-bottom: 12px; }
+.pf-donut-flex { display: flex; align-items: center; gap: 16px; }
+.pf-donut-wrap { position: relative; width: 180px; height: 180px; flex-shrink: 0; }
+.pf-donut-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  pointer-events: none;
+  font-family: var(--mono);
+}
+.pf-donut-center .n { font-size: 15px; font-weight: 500; }
+.pf-donut-center .l { font-size: 9px; color: var(--ink3); letter-spacing: 1px; }
+.pf-legend { display: flex; flex-direction: column; gap: 4px; font-size: 11px; min-width: 0; flex: 1; }
+.pf-legend-row { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.pf-legend-row .sw { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.pf-legend-row .nm { overflow: hidden; text-overflow: ellipsis; color: var(--ink2); }
+.pf-legend-row .pc { font-family: var(--mono); color: var(--ink); margin-left: auto; }
+.pf-legend-row .dl { font-family: var(--mono); font-size: 10px; }
+.pf-bar-wrap { position: relative; height: 320px; }
+.pf-bar-wrap.short { height: 260px; }
+
+.pf-table-scroll { overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+.pf-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 900px; }
+.pf-table th {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1px; font-weight: 400;
+  background: var(--ink); color: var(--bg);
+  padding: 8px 10px; text-align: right; white-space: nowrap;
+}
+.pf-table th:nth-child(1), .pf-table th:nth-child(2), .pf-table th:nth-child(3) { text-align: left; }
+.pf-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); text-align: right; font-family: var(--mono); white-space: nowrap; }
+.pf-table td.l { text-align: left; font-family: var(--sans); }
+.pf-table tr:hover td { background: var(--bg2); }
+.pf-table tr.sim-row td { background: #fdf0ec; }
+.pf-table .inp-mini {
+  width: 64px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: right;
+  color: var(--ink);
+  outline: none;
+}
+.pf-table .inp-mini:focus { border-color: var(--accent3); }
+.pf-del-btn {
+  background: none; border: 1px solid var(--border); border-radius: 4px;
+  color: var(--ink3); cursor: pointer; font-size: 11px; padding: 2px 8px;
+  transition: all 0.15s;
+}
+.pf-del-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
+
+.sim-banner {
+  background: #eef2f6;
+  border: 1px solid #d0dbe5;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+.sim-banner-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.sim-banner-title { font-size: 13px; font-weight: 700; color: var(--accent3); }
+.sim-badge {
+  font-family: var(--mono); font-size: 10px;
+  background: var(--accent3); color: white;
+  padding: 2px 8px; border-radius: 10px;
+}
+.sim-compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.sim-metric { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.sim-metric .lbl { font-family: var(--mono); font-size: 9px; letter-spacing: 1px; color: var(--ink3); margin-bottom: 4px; }
+.sim-metric .vals { font-family: var(--mono); font-size: 13px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.sim-metric .before { color: var(--ink3); }
+.sim-metric .arrow { color: var(--ink3); font-size: 11px; }
+.sim-metric .after { font-weight: 500; font-size: 15px; }
+
+.pf-sector-delta-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pf-sector-delta-table th {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 1px; font-weight: 400;
+  color: var(--ink3); padding: 4px 8px; text-align: right; border-bottom: 1px solid var(--border);
+}
+.pf-sector-delta-table th:first-child { text-align: left; }
+.pf-sector-delta-table td { padding: 5px 8px; border-bottom: 1px solid var(--bg2); text-align: right; font-family: var(--mono); }
+.pf-sector-delta-table td.l { text-align: left; font-family: var(--sans); }
+.pf-sector-delta-table tr.hl td { background: #fdf0ec; }
+
+@media (max-width: 960px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+  .pf-charts-grid { grid-template-columns: 1fr; }
+  header { padding: 0 16px; }
+  .main { padding: 20px 16px; }
+}
 </style>
 </head>
 <body>
@@ -502,13 +653,17 @@ header .status-pill.error { color: var(--accent); }
     <div class="logo-mark">株</div>
     JAPAN STOCK SCREENER
   </div>
+  <div class="header-tabs">
+    <button class="tab-btn active" id="tabScreener" onclick="setMainView('screener')">🔍 スクリーナー</button>
+    <button class="tab-btn" id="tabPortfolio" onclick="setMainView('portfolio')">📊 ポートフォリオ</button>
+  </div>
   <div class="status-pill" id="statusPill">
     <div class="dot"></div>
     <span id="statusText">読み込み中...</span>
   </div>
 </header>
 
-<div class="layout">
+<div class="layout" id="screenerLayout">
   <aside class="sidebar">
     <div class="sidebar-title">DATA</div>
 
@@ -669,6 +824,78 @@ header .status-pill.error { color: var(--accent); }
       <div class="empty-state" style="grid-column:1/-1">
         <div class="big">🔍</div>
         条件を設定して<br>「スクリーニング実行」を押してください
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="layout" id="portfolioLayout" style="display:none">
+  <aside class="sidebar">
+    <div class="sidebar-title">SIMULATION</div>
+
+    <div class="filter-section">
+      <div class="filter-section-title">組入シミュレーション</div>
+      <div class="input-wrap">
+        <div class="input-label">銘柄（コード or 名前で検索）</div>
+        <input class="inp" id="simStockInput" list="simStockList" placeholder="例: 8058 三菱商事">
+        <datalist id="simStockList"></datalist>
+      </div>
+      <div class="input-wrap">
+        <div class="input-label">株数</div>
+        <input class="inp" type="number" id="simShares" value="100" min="1" step="1">
+      </div>
+      <div class="toggle-row active" id="toggleSimNisa" onclick="toggleSimNisa()">
+        <span class="toggle-label">NISA枠で購入（非課税）</span>
+        <div class="toggle-switch on" id="swSimNisa"></div>
+      </div>
+      <button class="run-btn" onclick="runSimulation()">
+        <div class="btn-inner">▶ 組入後を試算</div>
+      </button>
+      <button class="sort-btn" id="simClearBtn" onclick="clearSimulation()" style="display:none">✕ シミュレーション解除</button>
+    </div>
+
+    <div class="sidebar-title" style="margin-top:12px;">HOLDINGS</div>
+
+    <div class="filter-section">
+      <div class="filter-section-title">保有銘柄を追加</div>
+      <div class="input-wrap">
+        <div class="input-label">銘柄コード</div>
+        <input class="inp" id="addCode" list="simStockList" placeholder="例: 9433">
+      </div>
+      <div style="display:flex; gap:8px;">
+        <div class="input-wrap" style="flex:1">
+          <div class="input-label">株数</div>
+          <input class="inp" type="number" id="addShares" placeholder="100" min="1">
+        </div>
+        <div class="input-wrap" style="flex:1">
+          <div class="input-label">取得単価（円）</div>
+          <input class="inp" type="number" id="addPrice" placeholder="空欄=現在値" min="0">
+        </div>
+      </div>
+      <button class="sort-btn" onclick="addHolding()" style="padding:8px;">＋ 追加する</button>
+    </div>
+
+    <div class="note-box">
+      💾 保有データの変更はこのブラウザ（localStorage）に保存されます。<br>
+      株価・配当・業種はスクリーナーのデータから自動反映されます。
+    </div>
+
+    <button class="sort-btn" onclick="resetPortfolio()" title="スプレッドシート由来の初期データに戻す">↺ 初期データに戻す</button>
+  </aside>
+
+  <main class="main">
+    <div class="result-bar">
+      <div class="result-count">
+        <div class="num" id="pfHoldingsNum">—</div>
+        <div>銘柄を保有</div>
+      </div>
+      <div class="result-count" id="pfSourceNote" style="text-align:right; font-size:10px; line-height:1.7;"></div>
+    </div>
+
+    <div id="pfBody">
+      <div class="empty-state">
+        <div class="big">📊</div>
+        データ読み込み中...
       </div>
     </div>
   </main>
@@ -1191,6 +1418,7 @@ function openModal(code) {
         <span class="copy-chip" onclick="copyCode('${s.code}', this)" title="クリックしてコピー">📋 ${s.code}</span>
         <a href="https://irbank.net/${s.code}/results" target="_blank" rel="noopener noreferrer" class="link-chip" title="IR BANKで業績を見る">🏦 IR BANK</a>
         <a href="https://finance.yahoo.co.jp/quote/${s.code}.T" target="_blank" rel="noopener noreferrer" class="link-chip" title="Yahoo!ファイナンスで見る">📈 Yahoo!</a>
+        <span class="link-chip" style="cursor:pointer" onclick="simulateFromModal('${s.code}')" title="ポートフォリオに組み入れた場合の変化を試算">📊 組入試算</span>
         <span class="sector-chip">${s.s33Name || s.sector || '—'}</span>
       </div>
 
@@ -1414,8 +1642,581 @@ function setStatus(type, text) {
   document.getElementById('statusText').textContent = text;
 }
 
-window.addEventListener('load', () => {
-  loadStaticData();
+// ===== PORTFOLIO =====
+const PF_STORAGE_KEY = 'pf_holdings_v1';
+const PF_COLORS = ['#2a78d6', '#1baf7a', '#eda100', '#008300', '#4a3aa7', '#e34948', '#e87ba4', '#eb6834'];
+const PF_OTHER_COLOR = '#898781';
+const PF_SIM_COLOR = '#eb6834';
+const PF_SURFACE = '#faf8f3';
+let TAX_RATE = 0.20315;
+let DEFAULT_PF = null;
+let PORTFOLIO = null;
+let PF_SOURCE = '';
+let SIM = null;          // { code, shares, nisa }
+let simNisa = true;
+let mainView = 'screener';
+const pfCharts = {};
+
+const fmtYen = n => '¥' + Math.round(n).toLocaleString();
+const fmtSignedYen = n => (n >= 0 ? '+' : '−') + '¥' + Math.abs(Math.round(n)).toLocaleString();
+const fmtPct = (n, d = 2) => n.toFixed(d) + '%';
+
+function setMainView(v) {
+  mainView = v;
+  document.getElementById('screenerLayout').style.display = v === 'screener' ? 'grid' : 'none';
+  document.getElementById('portfolioLayout').style.display = v === 'portfolio' ? 'grid' : 'none';
+  document.getElementById('tabScreener').classList.toggle('active', v === 'screener');
+  document.getElementById('tabPortfolio').classList.toggle('active', v === 'portfolio');
+  if (v === 'portfolio') renderPortfolio();
+}
+
+async function loadPortfolio() {
+  try {
+    const resp = await fetch(`data/portfolio.json?v=${Date.now()}`);
+    if (!resp.ok) throw new Error(`portfolio.json: HTTP ${resp.status}`);
+    const json = await resp.json();
+    DEFAULT_PF = json.holdings || [];
+    PF_SOURCE = json.source || '';
+    if (json.taxRate) TAX_RATE = json.taxRate;
+  } catch (e) {
+    console.error(e);
+    DEFAULT_PF = [];
+  }
+  const saved = localStorage.getItem(PF_STORAGE_KEY);
+  PORTFOLIO = saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(DEFAULT_PF));
+  buildStockDatalist();
+  if (mainView === 'portfolio') renderPortfolio();
+}
+
+function savePF() {
+  localStorage.setItem(PF_STORAGE_KEY, JSON.stringify(PORTFOLIO));
+}
+
+function buildStockDatalist() {
+  const dl = document.getElementById('simStockList');
+  if (!dl || !STOCK_CACHE) return;
+  const opts = Object.keys(STOCK_CACHE).sort().map(code => {
+    const s = STOCK_CACHE[code];
+    return `<option value="${code} ${s.jaName || s.name || ''}"></option>`;
+  });
+  dl.innerHTML = opts.join('');
+}
+
+function enrichHolding(h) {
+  const s = STOCK_CACHE[h.code];
+  const m = h.manual || {};
+  const shares = h.shares || 0;
+  const avgPrice = h.avgPrice || 0;
+  const price = (s && s.currentPrice > 0) ? s.currentPrice : (m.price || 0);
+  const divPS = (s && s.dividend && s.dividend.length) ? s.dividend[s.dividend.length - 1] : (m.dividendPerShare || 0);
+  const nisaShares = Math.min(h.nisaShares != null ? h.nisaShares : 0, shares);
+  const annualDiv = divPS * shares;
+  const afterTaxDiv = divPS * nisaShares + divPS * (shares - nisaShares) * (1 - TAX_RATE);
+  return {
+    code: h.code,
+    name: (s && (s.jaName || s.name)) || m.name || h.code,
+    sector: (s && (s.s33Name || s.sector)) || m.sector || 'その他',
+    shares, avgPrice, nisaShares, price, divPS,
+    cost: avgPrice * shares,
+    value: price * shares,
+    annualDiv, afterTaxDiv,
+    yield: price > 0 ? divPS / price * 100 : 0,
+    inCache: !!s,
+    isSim: !!h.isSim,
+  };
+}
+
+function computePF(holdings) {
+  const rows = holdings.map(enrichHolding);
+  const t = { value: 0, cost: 0, div: 0, divAT: 0 };
+  const sectors = {};
+  rows.forEach(r => {
+    t.value += r.value; t.cost += r.cost; t.div += r.annualDiv; t.divAT += r.afterTaxDiv;
+    sectors[r.sector] = (sectors[r.sector] || 0) + r.value;
+  });
+  const topSector = Object.entries(sectors).sort((a, b) => b[1] - a[1])[0];
+  return {
+    rows, sectors,
+    totalValue: t.value, totalCost: t.cost,
+    pl: t.value - t.cost,
+    plPct: t.cost > 0 ? (t.value - t.cost) / t.cost * 100 : 0,
+    totalDiv: t.div, totalDivAT: t.divAT,
+    yieldNow: t.value > 0 ? t.div / t.value * 100 : 0,
+    yieldCost: t.cost > 0 ? t.div / t.cost * 100 : 0,
+    topSectorName: topSector ? topSector[0] : '—',
+    topSectorPct: topSector && t.value > 0 ? topSector[1] / t.value * 100 : 0,
+    count: rows.length,
+  };
+}
+
+function simHoldingObj() {
+  if (!SIM) return null;
+  const s = STOCK_CACHE[SIM.code];
+  if (!s) return null;
+  return {
+    code: SIM.code,
+    shares: SIM.shares,
+    avgPrice: s.currentPrice || 0,
+    nisaShares: SIM.nisa ? SIM.shares : 0,
+    isSim: true,
+  };
+}
+
+// ---- sector colors: fixed assignment by value rank, shared across before/after ----
+function sectorColorMap(sectorsList) {
+  const merged = {};
+  sectorsList.forEach(sec => {
+    for (const k in sec) merged[k] = Math.max(merged[k] || 0, sec[k]);
+  });
+  const ranked = Object.entries(merged).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+  const map = {};
+  ranked.forEach((name, i) => { map[name] = i < PF_COLORS.length ? PF_COLORS[i] : PF_OTHER_COLOR; });
+  return map;
+}
+
+function foldSectors(sectors, colorMap) {
+  const entries = Object.entries(sectors).sort((a, b) => b[1] - a[1]);
+  const main = entries.filter(e => colorMap[e[0]] !== PF_OTHER_COLOR);
+  const rest = entries.filter(e => colorMap[e[0]] === PF_OTHER_COLOR);
+  const out = main.map(([name, v]) => ({ name, v, color: colorMap[name] }));
+  if (rest.length) out.push({ name: 'その他業種', v: rest.reduce((a, e) => a + e[1], 0), color: PF_OTHER_COLOR });
+  return out;
+}
+
+function destroyPfCharts() {
+  Object.values(pfCharts).forEach(c => c.destroy());
+  for (const k in pfCharts) delete pfCharts[k];
+}
+
+function renderPortfolio() {
+  const body = document.getElementById('pfBody');
+  if (!body) return;
+  if (!PORTFOLIO || !STOCK_CACHE || !Object.keys(STOCK_CACHE).length) {
+    body.innerHTML = `<div class="empty-state"><div class="big">📊</div>データ読み込み中...</div>`;
+    return;
+  }
+  destroyPfCharts();
+
+  const base = computePF(PORTFOLIO);
+  const simH = simHoldingObj();
+  const after = simH ? computePF([...PORTFOLIO, simH]) : null;
+  const cur = after || base;
+
+  document.getElementById('pfHoldingsNum').textContent = base.count;
+  const pfNote = [];
+  if (PF_SOURCE) pfNote.push(`初期データ: ${PF_SOURCE}`);
+  pfNote.push('株価・配当はスクリーナーのキャッシュを使用');
+  document.getElementById('pfSourceNote').innerHTML = pfNote.join('<br>');
+  document.getElementById('simClearBtn').style.display = SIM ? 'block' : 'none';
+
+  let html = '';
+
+  // --- summary tiles (base) ---
+  html += `<div class="pf-tiles">
+    <div class="pf-tile">
+      <div class="pf-tile-lbl">評価額合計</div>
+      <div class="pf-tile-val">${fmtYen(base.totalValue)}</div>
+      <div class="pf-tile-sub">購入額 ${fmtYen(base.totalCost)}</div>
+    </div>
+    <div class="pf-tile">
+      <div class="pf-tile-lbl">評価損益</div>
+      <div class="pf-tile-val ${base.pl >= 0 ? 'green' : 'red'}">${fmtSignedYen(base.pl)}</div>
+      <div class="pf-tile-sub">${base.pl >= 0 ? '+' : '−'}${fmtPct(Math.abs(base.plPct))}</div>
+    </div>
+    <div class="pf-tile">
+      <div class="pf-tile-lbl">年間配当（税引後）</div>
+      <div class="pf-tile-val">${fmtYen(base.totalDivAT)}</div>
+      <div class="pf-tile-sub">税引前 ${fmtYen(base.totalDiv)} ・ 月あたり ${fmtYen(base.totalDivAT / 12)}</div>
+    </div>
+    <div class="pf-tile">
+      <div class="pf-tile-lbl">配当利回り</div>
+      <div class="pf-tile-val green">${fmtPct(base.yieldNow)}</div>
+      <div class="pf-tile-sub">取得ベース ${fmtPct(base.yieldCost)}</div>
+    </div>
+    <div class="pf-tile">
+      <div class="pf-tile-lbl">最大業種比率</div>
+      <div class="pf-tile-val">${fmtPct(base.topSectorPct, 1)}</div>
+      <div class="pf-tile-sub">${base.topSectorName}</div>
+    </div>
+  </div>`;
+
+  // --- simulation banner ---
+  if (after && simH) {
+    const simRow = enrichHolding(simH);
+    const investment = simRow.value;
+    const metric = (lbl, b, a, fmt, deltaFmt) => {
+      const d = a - b;
+      const cls = d > 0 ? 'delta-up' : (d < 0 ? 'delta-down' : '');
+      return `<div class="sim-metric">
+        <div class="lbl">${lbl}</div>
+        <div class="vals"><span class="before">${fmt(b)}</span><span class="arrow">→</span><span class="after">${fmt(a)}</span></div>
+        <span class="delta-chip ${cls}">${deltaFmt(d)}</span>
+      </div>`;
+    };
+    html += `<div class="sim-banner">
+      <div class="sim-banner-top">
+        <div class="sim-banner-title">📊 組入シミュレーション: ${simRow.code} ${simRow.name}（${simRow.sector}）</div>
+        <span class="sim-badge">${simRow.shares}株 ・ ${fmtYen(investment)} ・ ${SIM.nisa ? 'NISA' : '課税口座'}</span>
+      </div>
+      <div class="sim-compare-grid">
+        ${metric('評価額合計', base.totalValue, after.totalValue, fmtYen, fmtSignedYen)}
+        ${metric('年間配当（税引後）', base.totalDivAT, after.totalDivAT, fmtYen, d => fmtSignedYen(d) + '/年')}
+        ${metric('配当利回り', base.yieldNow, after.yieldNow, v => fmtPct(v), d => (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(2) + 'pt')}
+        ${metric('最大業種比率', base.topSectorPct, after.topSectorPct, v => fmtPct(v, 1) + '（' + (v === base.topSectorPct ? base.topSectorName : after.topSectorName) + '）', d => (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(1) + 'pt')}
+      </div>
+    </div>`;
+  }
+
+  // --- charts ---
+  const colorMap = sectorColorMap(after ? [base.sectors, after.sectors] : [base.sectors]);
+  const donutLegend = (folded, total, beforeSectors, beforeTotal) => folded.map(f => {
+    const pct = total > 0 ? f.v / total * 100 : 0;
+    let delta = '';
+    if (beforeSectors) {
+      const bPct = beforeTotal > 0 ? (beforeSectors[f.name] || 0) / beforeTotal * 100 : 0;
+      const d = pct - bPct;
+      if (Math.abs(d) >= 0.05) delta = `<span class="dl ${d > 0 ? 'delta-up' : 'delta-down'}">${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}pt</span>`;
+    }
+    return `<div class="pf-legend-row"><span class="sw" style="background:${f.color}"></span><span class="nm" title="${f.name}">${f.name}</span><span class="pc">${pct.toFixed(1)}%</span>${delta}</div>`;
+  }).join('');
+
+  const baseFolded = foldSectors(base.sectors, colorMap);
+  if (after) {
+    const afterFolded = foldSectors(after.sectors, colorMap);
+    // legend deltas need raw sector values keyed by folded name: rebuild folded "その他" lookup
+    const rawWithFold = (pf, folded) => {
+      const out = { ...pf.sectors };
+      const otherRow = folded.find(f => f.color === PF_OTHER_COLOR);
+      if (otherRow) out[otherRow.name] = otherRow.v;
+      return out;
+    };
+    html += `<div class="pf-section">
+      <div class="pf-section-title">業種別構成 ─ 現在 vs 組入後</div>
+      <div class="pf-charts-grid">
+        <div class="pf-chart-box">
+          <h4>現在</h4>
+          <div class="pf-donut-flex">
+            <div class="pf-donut-wrap"><canvas id="pfDonutBefore"></canvas>
+              <div class="pf-donut-center"><span class="n">${fmtYen(base.totalValue)}</span><span class="l">${base.count}銘柄</span></div>
+            </div>
+            <div class="pf-legend">${donutLegend(baseFolded, base.totalValue)}</div>
+          </div>
+        </div>
+        <div class="pf-chart-box">
+          <h4>組入後</h4>
+          <div class="pf-donut-flex">
+            <div class="pf-donut-wrap"><canvas id="pfDonutAfter"></canvas>
+              <div class="pf-donut-center"><span class="n">${fmtYen(after.totalValue)}</span><span class="l">${after.count}銘柄</span></div>
+            </div>
+            <div class="pf-legend">${donutLegend(afterFolded, after.totalValue, rawWithFold(base, baseFolded), base.totalValue)}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  } else {
+    html += `<div class="pf-section">
+      <div class="pf-charts-grid">
+        <div class="pf-chart-box">
+          <h4>業種別構成（評価額ベース）</h4>
+          <div class="pf-donut-flex">
+            <div class="pf-donut-wrap"><canvas id="pfDonutBefore"></canvas>
+              <div class="pf-donut-center"><span class="n">${fmtYen(base.totalValue)}</span><span class="l">${base.count}銘柄</span></div>
+            </div>
+            <div class="pf-legend">${donutLegend(baseFolded, base.totalValue)}</div>
+          </div>
+        </div>
+        <div class="pf-chart-box">
+          <h4>年間配当 Top10（税引後）</h4>
+          <div class="pf-bar-wrap short"><canvas id="pfDivBar"></canvas></div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  html += `<div class="pf-section">
+    <div class="pf-section-title">保有銘柄の構成（評価額ベース${after ? ' ・ 組入後' : ''}）</div>
+    <div class="pf-chart-box"><div class="pf-bar-wrap"><canvas id="pfCompBar"></canvas></div></div>
+  </div>`;
+
+  if (after) {
+    html += `<div class="pf-section">
+      <div class="pf-charts-grid">
+        <div class="pf-chart-box">
+          <h4>年間配当 Top10（税引後 ・ 組入後）</h4>
+          <div class="pf-bar-wrap short"><canvas id="pfDivBar"></canvas></div>
+        </div>
+        <div class="pf-chart-box">
+          <h4>業種別比率の変化</h4>
+          <table class="pf-sector-delta-table">
+            <thead><tr><th>業種</th><th>現在</th><th>組入後</th><th>変化</th></tr></thead>
+            <tbody>${sectorDeltaRows(base, after, simH)}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // --- holdings table ---
+  html += `<div class="pf-section">
+    <div class="pf-section-title">保有銘柄一覧</div>
+    <div class="pf-table-scroll">${holdingsTableHTML(cur)}</div>
+  </div>`;
+
+  body.innerHTML = html;
+
+  // --- instantiate charts ---
+  drawDonut('pfDonutBefore', baseFolded, base.totalValue);
+  if (after) drawDonut('pfDonutAfter', foldSectors(after.sectors, colorMap), after.totalValue);
+  drawCompBar(cur);
+  drawDivBar(cur);
+}
+
+function sectorDeltaRows(base, after, simH) {
+  const simSector = simH ? enrichHolding(simH).sector : null;
+  const names = [...new Set([...Object.keys(after.sectors), ...Object.keys(base.sectors)])];
+  return names
+    .map(n => ({
+      n,
+      b: base.totalValue > 0 ? (base.sectors[n] || 0) / base.totalValue * 100 : 0,
+      a: after.totalValue > 0 ? (after.sectors[n] || 0) / after.totalValue * 100 : 0,
+    }))
+    .sort((x, y) => y.a - x.a)
+    .map(r => {
+      const d = r.a - r.b;
+      const cls = Math.abs(d) < 0.05 ? '' : (d > 0 ? 'delta-up' : 'delta-down');
+      return `<tr class="${r.n === simSector ? 'hl' : ''}">
+        <td class="l">${r.n === simSector ? '▶ ' : ''}${r.n}</td>
+        <td>${r.b.toFixed(1)}%</td>
+        <td>${r.a.toFixed(1)}%</td>
+        <td class="${cls}">${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}pt</td>
+      </tr>`;
+    }).join('');
+}
+
+function holdingsTableHTML(cur) {
+  const total = cur.totalValue;
+  const rows = [...cur.rows].sort((a, b) => (b.isSim ? 1 : 0) - (a.isSim ? 1 : 0) || b.value - a.value);
+  return `<table class="pf-table">
+    <thead><tr>
+      <th>コード</th><th>銘柄名</th><th>業種</th>
+      <th>株数</th><th>うちNISA</th><th>取得単価</th><th>株価</th>
+      <th>評価額</th><th>損益</th><th>年間配当<br>(税引後)</th><th>利回り</th><th>構成比</th><th></th>
+    </tr></thead>
+    <tbody>
+    ${rows.map(r => {
+      const i = r.isSim ? -1 : PORTFOLIO.findIndex(h => h.code === r.code);
+      const pl = r.value - r.cost;
+      const plPct = r.cost > 0 ? pl / r.cost * 100 : 0;
+      const warn = !r.inCache && !(r.price > 0);
+      return `<tr class="${r.isSim ? 'sim-row' : ''}">
+        <td style="font-family:var(--mono)">${r.code}${r.isSim ? ' <span class="sim-badge">試算</span>' : ''}</td>
+        <td class="l" style="max-width:220px;overflow:hidden;text-overflow:ellipsis" title="${r.name}">${r.name}${warn ? ' ⚠' : ''}</td>
+        <td class="l" style="color:var(--ink3);font-size:11px">${r.sector}</td>
+        <td>${r.isSim ? r.shares.toLocaleString() : `<input class="inp-mini" type="number" min="0" step="1" value="${r.shares}" onchange="updateHolding(${i},'shares',this.value)">`}</td>
+        <td>${r.isSim ? r.nisaShares.toLocaleString() : `<input class="inp-mini" type="number" min="0" step="1" value="${r.nisaShares}" onchange="updateHolding(${i},'nisaShares',this.value)">`}</td>
+        <td>${r.isSim ? fmtYen(r.avgPrice) : `<input class="inp-mini" type="number" min="0" value="${r.avgPrice}" onchange="updateHolding(${i},'avgPrice',this.value)">`}</td>
+        <td>${r.price > 0 ? fmtYen(r.price) : '—'}</td>
+        <td>${fmtYen(r.value)}</td>
+        <td class="${pl >= 0 ? 'delta-up' : 'delta-down'}">${r.cost > 0 ? `${fmtSignedYen(pl)}<br><span style="font-size:10px">${pl >= 0 ? '+' : '−'}${Math.abs(plPct).toFixed(1)}%</span>` : '—'}</td>
+        <td>${fmtYen(r.afterTaxDiv)}</td>
+        <td>${r.yield > 0 ? fmtPct(r.yield) : '—'}</td>
+        <td>${total > 0 ? (r.value / total * 100).toFixed(1) + '%' : '—'}</td>
+        <td>${r.isSim ? '' : `<button class="pf-del-btn" onclick="removeHolding(${i})" title="この銘柄を削除">✕</button>`}</td>
+      </tr>`;
+    }).join('')}
+    </tbody>
+  </table>`;
+}
+
+// ---- charts ----
+const PF_FONT = { family: "'DM Mono', monospace", size: 11 };
+
+function drawDonut(id, folded, total) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  pfCharts[id] = new Chart(el, {
+    type: 'doughnut',
+    data: {
+      labels: folded.map(f => f.name),
+      datasets: [{
+        data: folded.map(f => f.v),
+        backgroundColor: folded.map(f => f.color),
+        borderColor: PF_SURFACE,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '64%',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmtYen(ctx.parsed)}（${total > 0 ? (ctx.parsed / total * 100).toFixed(1) : 0}%）` } }
+      }
+    }
+  });
+}
+
+function drawCompBar(pf) {
+  const el = document.getElementById('pfCompBar');
+  if (!el) return;
+  const sorted = [...pf.rows].sort((a, b) => b.value - a.value);
+  const top = sorted.slice(0, 15);
+  const simRow = sorted.find(r => r.isSim);
+  if (simRow && !top.includes(simRow)) top.push(simRow);
+  const labels = top.map(r => `${r.name}${r.isSim ? '（試算）' : ''}`);
+  const data = top.map(r => r.value);
+  const colors = top.map(r => r.isSim ? PF_SIM_COLOR : '#2a78d6');
+  const remaining = sorted.filter(r => !top.includes(r));
+  if (remaining.length) {
+    labels.push(`その他 ${remaining.length}銘柄`);
+    data.push(remaining.reduce((a, r) => a + r.value, 0));
+    colors.push(PF_OTHER_COLOR);
+  }
+
+  pfCharts['pfCompBar'] = new Chart(el, {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderRadius: 4, barPercentage: 0.7 }] },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${fmtYen(ctx.parsed.x)}（${pf.totalValue > 0 ? (ctx.parsed.x / pf.totalValue * 100).toFixed(1) : 0}%）` } }
+      },
+      scales: {
+        x: { grid: { color: '#e1e0d9' }, ticks: { font: PF_FONT, color: '#898781', callback: v => (v / 10000) + '万' } },
+        y: { grid: { display: false }, ticks: { font: { family: "'Zen Kaku Gothic New', sans-serif", size: 11 }, color: '#52514e' } }
+      }
+    }
+  });
+}
+
+function drawDivBar(pf) {
+  const el = document.getElementById('pfDivBar');
+  if (!el) return;
+  const sorted = [...pf.rows].sort((a, b) => b.afterTaxDiv - a.afterTaxDiv).slice(0, 10);
+  pfCharts['pfDivBar'] = new Chart(el, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(r => `${r.name}${r.isSim ? '（試算）' : ''}`),
+      datasets: [{ data: sorted.map(r => r.afterTaxDiv), backgroundColor: sorted.map(r => r.isSim ? PF_SIM_COLOR : '#1baf7a'), borderRadius: 4, barPercentage: 0.7 }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${fmtYen(ctx.parsed.x)}/年` } }
+      },
+      scales: {
+        x: { grid: { color: '#e1e0d9' }, ticks: { font: PF_FONT, color: '#898781', callback: v => (v / 10000) + '万' } },
+        y: { grid: { display: false }, ticks: { font: { family: "'Zen Kaku Gothic New', sans-serif", size: 11 }, color: '#52514e' } }
+      }
+    }
+  });
+}
+
+// ---- editing ----
+function updateHolding(i, field, value) {
+  if (i < 0 || !PORTFOLIO[i]) return;
+  const n = parseFloat(value);
+  if (isNaN(n) || n < 0) { renderPortfolio(); return; }
+  PORTFOLIO[i][field] = n;
+  if (field === 'shares' && (PORTFOLIO[i].nisaShares || 0) > n) PORTFOLIO[i].nisaShares = n;
+  savePF();
+  renderPortfolio();
+}
+
+function removeHolding(i) {
+  if (i < 0 || !PORTFOLIO[i]) return;
+  const h = enrichHolding(PORTFOLIO[i]);
+  if (!confirm(`${h.code} ${h.name} をポートフォリオから削除しますか？`)) return;
+  PORTFOLIO.splice(i, 1);
+  savePF();
+  renderPortfolio();
+}
+
+function parseCodeInput(raw) {
+  const m = (raw || '').trim().match(/^([0-9][0-9A-Z]{3})/);
+  if (m && STOCK_CACHE[m[1]]) return m[1];
+  // fallback: name search
+  const q = (raw || '').trim();
+  if (!q) return null;
+  for (const code in STOCK_CACHE) {
+    const s = STOCK_CACHE[code];
+    if ((s.jaName && s.jaName === q) || (s.name && s.name === q)) return code;
+  }
+  return m ? m[1] : null;
+}
+
+function addHolding() {
+  const code = parseCodeInput(document.getElementById('addCode').value);
+  const shares = parseFloat(document.getElementById('addShares').value);
+  if (!code) { alert('銘柄コードを入力してください（例: 9433）'); return; }
+  if (!shares || shares <= 0) { alert('株数を入力してください'); return; }
+  const s = STOCK_CACHE[code];
+  if (!s) {
+    if (!confirm(`${code} はスクリーナーのデータに存在しません。\n株価・配当は0円として追加されます（後で編集不可）。追加しますか？`)) return;
+  }
+  const priceInput = parseFloat(document.getElementById('addPrice').value);
+  const avgPrice = (!isNaN(priceInput) && priceInput > 0) ? priceInput : ((s && s.currentPrice) || 0);
+  const existing = PORTFOLIO.findIndex(h => h.code === code);
+  if (existing >= 0) {
+    const h = PORTFOLIO[existing];
+    const newShares = h.shares + shares;
+    h.avgPrice = Math.round((h.avgPrice * h.shares + avgPrice * shares) / newShares * 100) / 100;
+    h.shares = newShares;
+    h.nisaShares = (h.nisaShares || 0) + shares;
+  } else {
+    PORTFOLIO.push({ code, shares, avgPrice, nisaShares: shares });
+  }
+  savePF();
+  document.getElementById('addCode').value = '';
+  document.getElementById('addShares').value = '';
+  document.getElementById('addPrice').value = '';
+  renderPortfolio();
+}
+
+function resetPortfolio() {
+  if (!confirm('保有データをスプレッドシート由来の初期データに戻しますか？\nこのブラウザでの変更はすべて破棄されます。')) return;
+  localStorage.removeItem(PF_STORAGE_KEY);
+  PORTFOLIO = JSON.parse(JSON.stringify(DEFAULT_PF));
+  clearSimulation();
+}
+
+// ---- simulation ----
+function toggleSimNisa() {
+  simNisa = !simNisa;
+  document.getElementById('toggleSimNisa').classList.toggle('active', simNisa);
+  document.getElementById('swSimNisa').classList.toggle('on', simNisa);
+  if (SIM) { SIM.nisa = simNisa; renderPortfolio(); }
+}
+
+function runSimulation() {
+  const code = parseCodeInput(document.getElementById('simStockInput').value);
+  const shares = parseFloat(document.getElementById('simShares').value);
+  if (!code || !STOCK_CACHE[code]) { alert('銘柄が見つかりません。コード（例: 8058）または正確な銘柄名で指定してください。'); return; }
+  if (!shares || shares <= 0) { alert('株数を入力してください'); return; }
+  SIM = { code, shares, nisa: simNisa };
+  renderPortfolio();
+}
+
+function clearSimulation() {
+  SIM = null;
+  document.getElementById('simStockInput').value = '';
+  renderPortfolio();
+}
+
+function simulateFromModal(code) {
+  document.getElementById('modal').style.display = 'none';
+  currentModalCode = null;
+  const s = STOCK_CACHE[code];
+  document.getElementById('simStockInput').value = `${code} ${(s && (s.jaName || s.name)) || ''}`.trim();
+  SIM = { code, shares: parseFloat(document.getElementById('simShares').value) || 100, nisa: simNisa };
+  setMainView('portfolio');
+  window.scrollTo({ top: 0 });
+}
+
+window.addEventListener('load', async () => {
+  await loadStaticData();
+  await loadPortfolio();
 });
 
 function showSkeletons() {
