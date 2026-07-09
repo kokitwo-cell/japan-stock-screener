@@ -554,7 +554,7 @@ header .status-pill.error { color: var(--accent); }
   min-width: 0;
 }
 .pf-chart-box h4 { font-family: var(--mono); font-size: 11px; letter-spacing: 1px; color: var(--ink2); font-weight: 400; margin-bottom: 12px; }
-.pf-donut-flex { display: flex; align-items: center; gap: 16px; }
+.pf-donut-flex { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .pf-donut-wrap { position: relative; width: 180px; height: 180px; flex-shrink: 0; }
 .pf-donut-center {
   position: absolute; inset: 0;
@@ -565,6 +565,8 @@ header .status-pill.error { color: var(--accent); }
 .pf-donut-center .n { font-size: 15px; font-weight: 500; }
 .pf-donut-center .l { font-size: 9px; color: var(--ink3); letter-spacing: 1px; }
 .pf-legend { display: flex; flex-direction: column; gap: 4px; font-size: 11px; min-width: 0; flex: 1; }
+.pf-legend.two-col { display: grid; grid-template-columns: 1fr 1fr; column-gap: 14px; row-gap: 3px; align-content: center; }
+@media (max-width: 1200px) { .pf-charts-grid .pf-legend.two-col { grid-template-columns: 1fr; } }
 .pf-legend-row { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .pf-legend-row .sw { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
 .pf-legend-row .nm { overflow: hidden; text-overflow: ellipsis; color: var(--ink2); }
@@ -1645,6 +1647,14 @@ function setStatus(type, text) {
 // ===== PORTFOLIO =====
 const PF_STORAGE_KEY = 'pf_holdings_v1';
 const PF_COLORS = ['#2a78d6', '#1baf7a', '#eda100', '#008300', '#4a3aa7', '#e34948', '#e87ba4', '#eb6834'];
+// 東証33業種を全表示するための拡張パレット（基本8色 → 濃色 → 淡色の順で評価額ランクに割当）
+const PF_COLORS_EXT = [
+  '#2a78d6', '#1baf7a', '#eda100', '#008300', '#4a3aa7', '#e34948', '#e87ba4', '#eb6834',
+  '#205595', '#167b56', '#a57104', '#045d04', '#362b75', '#9e3534', '#a15773', '#a34a27',
+  '#7faee6', '#76cfaf', '#f4c766', '#66b566', '#9289ca', '#ee9291', '#f1b0c8', '#f3a485',
+  '#193c66', '#12553d', '#714e06', '#064106', '#272051', '#6c2726', '#6e3d50', '#70351d',
+  '#b4d0f1', '#afe3d0', '#f9dea6', '#a6d4a6', '#c0bae0', '#f5bfbf', '#f7d1df', '#f8cab8'
+];
 const PF_OTHER_COLOR = '#898781';
 const PF_SIM_COLOR = '#eb6834';
 const PF_SURFACE = '#faf8f3';
@@ -1770,17 +1780,15 @@ function sectorColorMap(sectorsList) {
   });
   const ranked = Object.entries(merged).sort((a, b) => b[1] - a[1]).map(e => e[0]);
   const map = {};
-  ranked.forEach((name, i) => { map[name] = i < PF_COLORS.length ? PF_COLORS[i] : PF_OTHER_COLOR; });
+  ranked.forEach((name, i) => { map[name] = i < PF_COLORS_EXT.length ? PF_COLORS_EXT[i] : PF_OTHER_COLOR; });
   return map;
 }
 
+// 東証33業種を折りたたまず全業種をスライス表示する
 function foldSectors(sectors, colorMap) {
-  const entries = Object.entries(sectors).sort((a, b) => b[1] - a[1]);
-  const main = entries.filter(e => colorMap[e[0]] !== PF_OTHER_COLOR);
-  const rest = entries.filter(e => colorMap[e[0]] === PF_OTHER_COLOR);
-  const out = main.map(([name, v]) => ({ name, v, color: colorMap[name] }));
-  if (rest.length) out.push({ name: 'その他業種', v: rest.reduce((a, e) => a + e[1], 0), color: PF_OTHER_COLOR });
-  return out;
+  return Object.entries(sectors)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, v]) => ({ name, v, color: colorMap[name] || PF_OTHER_COLOR }));
 }
 
 function destroyPfCharts() {
@@ -1883,13 +1891,6 @@ function renderPortfolio() {
   const baseFolded = foldSectors(base.sectors, colorMap);
   if (after) {
     const afterFolded = foldSectors(after.sectors, colorMap);
-    // legend deltas need raw sector values keyed by folded name: rebuild folded "その他" lookup
-    const rawWithFold = (pf, folded) => {
-      const out = { ...pf.sectors };
-      const otherRow = folded.find(f => f.color === PF_OTHER_COLOR);
-      if (otherRow) out[otherRow.name] = otherRow.v;
-      return out;
-    };
     html += `<div class="pf-section">
       <div class="pf-section-title">業種別構成 ─ 現在 vs 組入後</div>
       <div class="pf-charts-grid">
@@ -1899,7 +1900,7 @@ function renderPortfolio() {
             <div class="pf-donut-wrap"><canvas id="pfDonutBefore"></canvas>
               <div class="pf-donut-center"><span class="n">${fmtYen(base.totalValue)}</span><span class="l">${base.count}銘柄</span></div>
             </div>
-            <div class="pf-legend">${donutLegend(baseFolded, base.totalValue)}</div>
+            <div class="pf-legend ${baseFolded.length > 10 ? 'two-col' : ''}">${donutLegend(baseFolded, base.totalValue)}</div>
           </div>
         </div>
         <div class="pf-chart-box">
@@ -1908,7 +1909,7 @@ function renderPortfolio() {
             <div class="pf-donut-wrap"><canvas id="pfDonutAfter"></canvas>
               <div class="pf-donut-center"><span class="n">${fmtYen(after.totalValue)}</span><span class="l">${after.count}銘柄</span></div>
             </div>
-            <div class="pf-legend">${donutLegend(afterFolded, after.totalValue, rawWithFold(base, baseFolded), base.totalValue)}</div>
+            <div class="pf-legend ${afterFolded.length > 10 ? 'two-col' : ''}">${donutLegend(afterFolded, after.totalValue, base.sectors, base.totalValue)}</div>
           </div>
         </div>
       </div>
@@ -1922,7 +1923,7 @@ function renderPortfolio() {
             <div class="pf-donut-wrap"><canvas id="pfDonutBefore"></canvas>
               <div class="pf-donut-center"><span class="n">${fmtYen(base.totalValue)}</span><span class="l">${base.count}銘柄</span></div>
             </div>
-            <div class="pf-legend">${donutLegend(baseFolded, base.totalValue)}</div>
+            <div class="pf-legend ${baseFolded.length > 10 ? 'two-col' : ''}">${donutLegend(baseFolded, base.totalValue)}</div>
           </div>
         </div>
         <div class="pf-chart-box">
