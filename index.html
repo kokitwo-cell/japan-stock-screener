@@ -1983,7 +1983,11 @@ function renderPortfolio() {
     html += `<div class="sim-banner">
       <div class="sim-banner-top">
         <div class="sim-banner-title">📊 シミュレーション（組入 ${SIM_BUYS.length}銘柄 ・ 売却 ${SIM_SELLS.length}銘柄）</div>
-        <span class="sim-badge" title="組入合計 ${fmtYen(totalBuy)} − 売却合計 ${fmtYen(totalSell)}">差引資金 ${net > 0 ? `−${fmtYen(net)}（追加投資）` : net < 0 ? `+${fmtYen(-net)}（回収）` : fmtYen(0)}</span>
+        <span style="display:flex; gap:6px; flex-wrap:wrap">
+          <span class="sim-badge" style="background:var(--accent2)" title="売却で入ってくるお金">入金（売却） +${fmtYen(totalSell)}</span>
+          <span class="sim-badge" style="background:var(--accent)" title="組入で出ていくお金">出金（組入） −${fmtYen(totalBuy)}</span>
+          <span class="sim-badge" title="出金 − 入金">差引 ${net > 0 ? `−${fmtYen(net)}（追加投資）` : net < 0 ? `+${fmtYen(-net)}（回収）` : fmtYen(0)}</span>
+        </span>
       </div>
       <div class="sim-op-chips">${chips.length ? chips.join('') : '<span style="font-size:11px;color:var(--ink3)">サイドバーの「＋ 組入に追加」「＋ 売却に追加」で取引を試算できます</span>'}</div>
       <div class="sim-compare-grid">
