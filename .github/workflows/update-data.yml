@@ -78,6 +78,10 @@ jobs:
           DIAG_IRBANK: ${{ github.event.inputs.diag_code }}
         run: python scripts/update_data.py
 
+      - name: Record portfolio history
+        if: github.event.inputs.mode != 'diag'
+        run: python scripts/record_history.py
+
       - name: Commit and push changes
         if: github.event.inputs.mode != 'diag'
         run: |

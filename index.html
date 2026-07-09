@@ -234,6 +234,23 @@ header .status-pill.error { color: var(--accent); }
 }
 .empty-state .big { font-size: 40px; margin-bottom: 12px; }
 
+.held-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  color: var(--accent3);
+  background: #eef2f6;
+  border: 1px solid #cddced;
+  padding: 1px 6px;
+  border-radius: 10px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.warn-icon { cursor: help; font-size: 11px; vertical-align: middle; }
+.pf-name-cell.clickable { cursor: pointer; color: var(--accent3); }
+.pf-name-cell.clickable:hover { text-decoration: underline; }
+
 .star-btn { cursor: pointer; color: var(--border); font-size: 18px; transition: color 0.1s; user-select: none; }
 .star-btn.active { color: #f5a623; }
 .star-btn:hover { color: #f5a623; transform: scale(1.1); }
@@ -951,6 +968,10 @@ header .status-pill.error { color: var(--accent); }
       株価・配当・業種はスクリーナーのデータから自動反映されます。
     </div>
 
+    <div style="display:flex; gap:6px;">
+      <button class="sort-btn" style="flex:1;" onclick="exportPortfolio(this)" title="現在の保有データをportfolio.json形式でコピー（data/portfolio.jsonに貼り替えると全端末に反映）">⧉ データをコピー</button>
+      <button class="sort-btn" style="flex:1;" onclick="downloadPortfolio()" title="portfolio.jsonをダウンロード">↓ JSON保存</button>
+    </div>
     <button class="sort-btn" onclick="resetPortfolio()" title="スプレッドシート由来の初期データに戻す">↺ 初期データに戻す</button>
   </aside>
 
@@ -1270,6 +1291,7 @@ function renderList(stocks) {
   Object.values(miniCharts).forEach(c => c.destroy());
   for (const k in miniCharts) delete miniCharts[k];
 
+  const held = heldCodes();
   grid.className = 'list-view';
   grid.innerHTML = `
     <div class="list-header">
@@ -1283,6 +1305,7 @@ function renderList(stocks) {
       <span style="text-align:right">連続年数</span>
     </div>
     ${stocks.map(s => {
+      const spike = dividendSpike(s);
       const yld = s.dividendYield > 0 ? s.dividendYield.toFixed(1) + '%' : '—';
       const per = s.per > 0 ? s.per.toFixed(1) + 'x' : '—';
       const pbr = s.pbr > 0 ? s.pbr.toFixed(2) + 'x' : '—';
@@ -1291,8 +1314,8 @@ function renderList(stocks) {
       return `<div class="list-row" onclick="openModal('${s.code}')">
         <span class="star-btn ${watchlist.includes(s.code) ? 'active' : ''}" onclick="toggleWatchlist(event, '${s.code}')">★</span>
         <span class="code">${s.code}</span>
-        <span class="name">${s.jaName || s.name}<small>${s.s33Name || s.industry || s.sector || ''}</small></span>
-        <span class="val yield-val">${yld}</span>
+        <span class="name">${s.jaName || s.name}${held.has(s.code) ? ' <span class="held-badge">保有中</span>' : ''}<small>${s.s33Name || s.industry || s.sector || ''}</small></span>
+        <span class="val yield-val">${yld}${spike ? ` <span class="warn-icon" title="最新配当が前年(${spike.prev}円)から急増しています。特別・記念配当を含む可能性があり、通常時の利回りは約${spike.normalYield.toFixed(1)}%とみられます。">⚠</span>` : ''}</span>
         <span class="val">${price}</span>
         <span class="val">${per}</span>
         <span class="val">${pbr}</span>
@@ -1386,6 +1409,8 @@ function cardHTML(s) {
 
   const revOk = rt && rt.slope > 0 && rt.r2 > 0.7;
   const profOk = pt && pt.slope > 0 && pt.r2 > 0.7;
+  const spike = dividendSpike(s);
+  const held = heldCodes().has(s.code);
 
   return `
   <div class="stock-card" onclick="openModal('${s.code}')">
@@ -1393,7 +1418,7 @@ function cardHTML(s) {
       <div style="display:flex; gap:8px; align-items:flex-start">
         <div class="star-btn ${watchlist.includes(s.code) ? 'active' : ''}" onclick="toggleWatchlist(event, '${s.code}')" style="margin-top:2px;">★</div>
         <div>
-          <div class="code-chip">${s.code}</div>
+          <div style="display:flex; gap:6px; align-items:center;"><div class="code-chip">${s.code}</div>${held ? '<span class="held-badge">保有中</span>' : ''}</div>
           <div class="stock-name" style="margin-top:6px">${s.jaName || s.name}</div>
           <div class="stock-industry">${s.s33Name || s.industry || s.sector || ''}</div>
         </div>
@@ -1408,7 +1433,7 @@ function cardHTML(s) {
       </div>
       <div class="metric-box">
         <div class="metric-lbl">配当利回り</div>
-        <div class="metric-val" style="color:${s.dividendYield>=3?'var(--accent2)':'inherit'}">${divYield}</div>
+        <div class="metric-val" style="color:${s.dividendYield>=3?'var(--accent2)':'inherit'}">${divYield}${spike ? ` <span class="warn-icon" title="最新配当が前年(${spike.prev}円)から急増。特別・記念配当を含む可能性があり、通常時利回りは約${spike.normalYield.toFixed(1)}%とみられます。">⚠</span>` : ''}</div>
       </div>
       <div class="metric-box">
         <div class="metric-lbl">PER</div>
@@ -1485,12 +1510,15 @@ function openModal(code) {
   const rt = s.revenueTrend;
   const pt = s.profitTrend;
   const et = s.epsTrend;
+  const modalSpike = dividendSpike(s);
+  const modalHeld = heldCodes().has(s.code);
 
   document.getElementById('modalHeaderFixed').innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
       <div style="display:flex; gap:10px; align-items:center;">
         <span class="star-btn ${watchlist.includes(s.code) ? 'active' : ''}" id="modalStar" data-code="${s.code}" onclick="toggleWatchlist(event, '${s.code}')" title="ウォッチリストに追加/解除">★</span>
         <span class="code-chip">${s.code}</span>
+        ${modalHeld ? '<span class="held-badge">保有中</span>' : ''}
         <span class="copy-chip" onclick="copyCode('${s.code}', this)" title="クリックしてコピー">📋 ${s.code}</span>
         <a href="https://irbank.net/${s.code}/results" target="_blank" rel="noopener noreferrer" class="link-chip" title="IR BANKで業績を見る">🏦 IR BANK</a>
         <a href="https://finance.yahoo.co.jp/quote/${s.code}.T" target="_blank" rel="noopener noreferrer" class="link-chip" title="Yahoo!ファイナンスで見る">📈 Yahoo!</a>
@@ -1518,7 +1546,8 @@ function openModal(code) {
       </div>
       <div class="modal-metric">
         <div class="modal-metric-lbl">配当利回り</div>
-        <div class="modal-metric-val ${s.dividendYield >= 3 ? 'green' : ''}">${s.dividendYield > 0 ? s.dividendYield.toFixed(1) + '%' : '—'}</div>
+        <div class="modal-metric-val ${s.dividendYield >= 3 ? 'green' : ''}">${s.dividendYield > 0 ? s.dividendYield.toFixed(1) + '%' : '—'}${modalSpike ? ` <span class="warn-icon" title="最新配当が前年(${modalSpike.prev}円)から急増。特別・記念配当を含む可能性があり、通常時利回りは約${modalSpike.normalYield.toFixed(1)}%とみられます。">⚠</span>` : ''}</div>
+        ${modalSpike ? `<div style="font-family:var(--mono);font-size:9px;color:var(--warn);margin-top:3px;">⚠ 一時配当の可能性（通常時 約${modalSpike.normalYield.toFixed(1)}%）</div>` : ''}
       </div>
       <div class="modal-metric">
         <div class="modal-metric-lbl">PER</div>
@@ -1741,6 +1770,31 @@ let SIM_SELLS = [];      // 売却: [{ code, shares }]
 let simNisa = true;
 let mainView = 'screener';
 const pfCharts = {};
+let PF_HISTORY = null;
+
+// 保有中の銘柄コード集合（スクリーナーの「保有中」バッジ用）
+function heldCodes() {
+  return new Set((PORTFOLIO || []).map(h => h.code));
+}
+
+// 最新配当が直近数年に対して急増している場合、特別配当・記念配当の一時的上振れの可能性ありと判定。
+// 直前の値、および直近3〜5年の中央値の両方に対して1.5倍以上なら true。
+function dividendSpike(data) {
+  const div = (data && data.dividend) || [];
+  if (div.length < 4) return null;
+  const latest = div[div.length - 1];
+  const prev = div[div.length - 2];
+  if (!(latest > 0) || !(prev > 0)) return null;
+  const hist = div.slice(Math.max(0, div.length - 6), div.length - 1).filter(v => v > 0).sort((a, b) => a - b);
+  if (hist.length < 3) return null;
+  const median = hist[Math.floor(hist.length / 2)];
+  if (latest >= prev * 1.6 && latest >= median * 1.8) {
+    // 通常時の目安として直前年配当をベースにした利回りも返す
+    const normalPS = prev;
+    return { latest, prev, median, normalYield: data.currentPrice > 0 ? normalPS / data.currentPrice * 100 : 0 };
+  }
+  return null;
+}
 
 // ディフェンシブ/景気敏感の業種振り分け（管理シート「設定」タブ由来。未定義業種は景気敏感扱い）
 // 表記ゆれ（・/･/、）を吸収するため中点・読点を除去した業種名をキーにする
@@ -1774,6 +1828,12 @@ async function loadPortfolio() {
   } catch (e) {
     console.error(e);
     DEFAULT_PF = [];
+  }
+  try {
+    const hresp = await fetch(`data/history.json?v=${Date.now()}`);
+    PF_HISTORY = hresp.ok ? await hresp.json() : [];
+  } catch (e) {
+    PF_HISTORY = [];
   }
   const saved = localStorage.getItem(PF_STORAGE_KEY);
   PORTFOLIO = saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(DEFAULT_PF));
@@ -1951,6 +2011,28 @@ function renderPortfolio() {
     </div>
   </div>`;
 
+  // --- asset history ---
+  const hist = Array.isArray(PF_HISTORY) ? PF_HISTORY : [];
+  if (hist.length >= 2) {
+    const first = hist[0], last = hist[hist.length - 1];
+    const chg = last.value - first.value;
+    html += `<div class="pf-section">
+      <div class="pf-chart-box">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+          <h4 style="margin:0;">資産推移（評価額）</h4>
+          <span style="font-family:var(--mono); font-size:11px; color:var(--ink3);">${first.date} 〜 ${last.date} ・ <span class="${chg >= 0 ? 'delta-up' : 'delta-down'}">${fmtSignedYen(chg)}</span></span>
+        </div>
+        <div class="pf-bar-wrap short"><canvas id="pfHistoryChart"></canvas></div>
+      </div>
+    </div>`;
+  } else {
+    html += `<div class="pf-section">
+      <div class="pf-chart-box" style="font-family:var(--mono); font-size:11px; color:var(--ink3); line-height:1.7;">
+        📈 <b style="color:var(--ink2)">資産推移グラフ</b>は、平日の株価更新（GitHub Actions）ごとに評価額を記録して自動で描画されます。データが2日分たまると表示されます${hist.length ? `（現在 ${hist.length}日分）` : ''}。
+      </div>
+    </div>`;
+  }
+
   // --- simulation banner ---
   if (after) {
     const metric = (lbl, b, a, fmt, deltaFmt) => {
@@ -2069,6 +2151,38 @@ function renderPortfolio() {
   // --- instantiate charts ---
   drawDonut('pfDonutBefore', baseFolded, base.totalValue);
   if (after) drawDonut('pfDonutAfter', foldSectors(after.sectors, colorMap), after.totalValue);
+  drawHistoryChart();
+}
+
+function drawHistoryChart() {
+  const el = document.getElementById('pfHistoryChart');
+  if (!el) return;
+  const hist = Array.isArray(PF_HISTORY) ? PF_HISTORY : [];
+  pfCharts['pfHistoryChart'] = new Chart(el, {
+    type: 'line',
+    data: {
+      labels: hist.map(e => e.date),
+      datasets: [
+        { label: '評価額', data: hist.map(e => e.value), borderColor: '#2b5c8a', backgroundColor: '#2b5c8a18',
+          borderWidth: 2, pointRadius: 0, tension: 0.25, fill: true },
+        { label: '取得額', data: hist.map(e => e.cost), borderColor: '#9c9489', borderDash: [4, 4],
+          borderWidth: 1.5, pointRadius: 0, tension: 0.25, fill: false },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top', align: 'end',
+          labels: { font: PF_FONT, color: '#6b6459', boxWidth: 12, boxHeight: 2 } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmtYen(ctx.parsed.y)}` } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: PF_FONT, color: '#898781', maxTicksLimit: 8, autoSkip: true } },
+        y: { grid: { color: '#e1e0d9' }, ticks: { font: PF_FONT, color: '#898781', callback: v => (v / 10000) + '万' } }
+      }
+    }
+  });
 }
 
 function updateSellSelect() {
@@ -2122,6 +2236,14 @@ function setPfSort(key) {
   renderPortfolio();
 }
 
+// ポートフォリオの保有一覧から詳細モーダルを開く。前へ/次へは保有銘柄内を移動する。
+function openHoldingModal(code) {
+  currentDisplayList = (PORTFOLIO || [])
+    .map(h => STOCK_CACHE[h.code])
+    .filter(Boolean);
+  openModal(code);
+}
+
 function holdingsTableHTML(cur) {
   const total = cur.totalValue;
   const { key, dir } = pfSort;
@@ -2156,9 +2278,11 @@ function holdingsTableHTML(cur) {
       const sharesCell = r.isSimSell
         ? `${r.shares.toLocaleString()} <span style="color:var(--accent);font-size:10px">（−${r.soldShares.toLocaleString()}）</span>`
         : r.shares.toLocaleString();
+      const spike = dividendSpike(STOCK_CACHE[r.code]);
+      const warnMark = spike ? ` <span class="warn-icon" title="最新配当が前年(${spike.prev}円)から急増。特別・記念配当を含む可能性があり、通常時利回りは約${spike.normalYield.toFixed(1)}%とみられます。">⚠</span>` : '';
       return `<tr class="${locked ? 'sim-row' : ''}">
         <td style="font-family:var(--mono)">${r.code}${badge}</td>
-        <td class="l" style="max-width:220px;overflow:hidden;text-overflow:ellipsis" title="${r.name}">${r.name}${warn ? ' ⚠' : ''}</td>
+        <td class="l pf-name-cell ${r.inCache ? 'clickable' : ''}" style="max-width:220px;overflow:hidden;text-overflow:ellipsis" title="${r.inCache ? 'クリックで詳細を表示' : r.name}" ${r.inCache ? `onclick="openHoldingModal('${r.code}')"` : ''}>${r.name}${warn ? ' ⚠' : ''}</td>
         <td class="l" style="color:var(--ink3);font-size:11px">${r.sector}<br><span class="sens-chip ${r.sensitivity}">${r.sensitivity === 'defensive' ? 'ディフェンシブ' : '景気敏感'}</span></td>
         <td>${locked ? sharesCell : `<input class="inp-mini" type="number" min="0" step="1" value="${r.shares}" onchange="updateHolding(${i},'shares',this.value)">`}</td>
         <td>${locked ? r.nisaShares.toLocaleString() : `<input class="inp-mini" type="number" min="0" step="1" value="${r.nisaShares}" onchange="updateHolding(${i},'nisaShares',this.value)">`}</td>
@@ -2168,7 +2292,7 @@ function holdingsTableHTML(cur) {
         <td class="${pl >= 0 ? 'delta-up' : 'delta-down'}">${r.cost > 0 ? `${fmtSignedYen(pl)}<br><span style="font-size:10px">${pl >= 0 ? '+' : '−'}${Math.abs(plPct).toFixed(1)}%</span>` : '—'}</td>
         <td>${fmtYen(r.afterTaxDiv)}</td>
         <td style="color:var(--accent2);font-weight:500">${r.yieldCost > 0 ? fmtPct(r.yieldCost) : '—'}</td>
-        <td>${r.yield > 0 ? fmtPct(r.yield) : '—'}</td>
+        <td>${r.yield > 0 ? fmtPct(r.yield) : '—'}${warnMark}</td>
         <td>${total > 0 ? (r.value / total * 100).toFixed(1) + '%' : '—'}</td>
         <td>${locked ? '' : `<button class="pf-del-btn" onclick="removeHolding(${i})" title="この銘柄を削除">✕</button>`}</td>
       </tr>`;
@@ -2179,6 +2303,7 @@ function holdingsTableHTML(cur) {
 
 // ---- charts ----
 
+const PF_FONT = { family: "'DM Mono', monospace", size: 11 };
 const SENS_COLORS = { defensive: '#3b7a57', cyclical: '#b85c00' };
 const SENS_LABELS = ['ディフェンシブ', '景気敏感'];
 
@@ -2285,6 +2410,40 @@ function resetPortfolio() {
   localStorage.removeItem(PF_STORAGE_KEY);
   PORTFOLIO = JSON.parse(JSON.stringify(DEFAULT_PF));
   clearSimulation();
+}
+
+// 現在の保有データを data/portfolio.json 形式の文字列に整形（manual項目は初期データから引き継ぐ）
+function portfolioJSON() {
+  const manualMap = {};
+  (DEFAULT_PF || []).forEach(h => { if (h.manual) manualMap[h.code] = h.manual; });
+  const holdings = (PORTFOLIO || []).map(h => {
+    const o = { code: h.code, shares: h.shares, avgPrice: h.avgPrice, nisaShares: h.nisaShares != null ? h.nisaShares : 0 };
+    if (manualMap[h.code]) o.manual = manualMap[h.code];
+    return o;
+  });
+  return JSON.stringify({
+    source: `${PF_SOURCE || '高配当株 管理シート'}（${new Date().toISOString().slice(0, 10)} エクスポート）`,
+    taxRate: TAX_RATE,
+    holdings
+  }, null, 2) + '\n';
+}
+
+function exportPortfolio(el) {
+  navigator.clipboard.writeText(portfolioJSON()).then(() => {
+    const orig = el.textContent;
+    el.textContent = '✅ コピーしました';
+    setTimeout(() => { el.textContent = orig; }, 1800);
+  }).catch(() => {
+    alert('クリップボードにコピーできませんでした。「JSON保存」からダウンロードしてください。');
+  });
+}
+
+function downloadPortfolio() {
+  const blob = new Blob([portfolioJSON()], { type: 'application/json;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'portfolio.json';
+  a.click(); URL.revokeObjectURL(url);
 }
 
 // ---- simulation ----
