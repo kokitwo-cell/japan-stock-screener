@@ -535,6 +535,31 @@ header .status-pill.error { color: var(--accent); }
   background: var(--bg2);
 }
 
+.sens-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: #e8c9a8;
+  overflow: hidden;
+  margin-top: 8px;
+}
+.sens-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent2);
+  border-radius: 4px 0 0 4px;
+}
+.sens-chip {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 0 6px;
+  border-radius: 8px;
+  border: 1px solid;
+  margin-top: 2px;
+}
+.sens-chip.defensive { color: var(--accent2); border-color: #a8d5b8; background: #edf5f0; }
+.sens-chip.cyclical { color: var(--warn); border-color: #e8c9a8; background: #fdf5ec; }
+
 .pf-section { margin-bottom: 26px; }
 .pf-section-title {
   font-family: var(--mono);
@@ -842,9 +867,15 @@ header .status-pill.error { color: var(--accent); }
         <input class="inp" id="simStockInput" list="simStockList" placeholder="例: 8058 三菱商事">
         <datalist id="simStockList"></datalist>
       </div>
-      <div class="input-wrap">
-        <div class="input-label">株数</div>
-        <input class="inp" type="number" id="simShares" value="100" min="1" step="1">
+      <div style="display:flex; gap:8px;">
+        <div class="input-wrap" style="flex:1">
+          <div class="input-label">株数</div>
+          <input class="inp" type="number" id="simShares" value="100" min="1" step="1">
+        </div>
+        <div class="input-wrap" style="flex:1">
+          <div class="input-label">株価（円）</div>
+          <input class="inp" type="number" id="simPrice" placeholder="空欄=現在値" min="0">
+        </div>
       </div>
       <div class="toggle-row active" id="toggleSimNisa" onclick="toggleSimNisa()">
         <span class="toggle-label">NISA枠で購入（非課税）</span>
@@ -1667,6 +1698,14 @@ let simNisa = true;
 let mainView = 'screener';
 const pfCharts = {};
 
+// ディフェンシブ/景気敏感の業種振り分け（管理シート「設定」タブ由来。未定義業種は景気敏感扱い）
+// 表記ゆれ（・/･/、）を吸収するため中点・読点を除去した業種名をキーにする
+const DEFENSIVE_SECTORS = new Set([
+  '水産農林業', 'サービス業', '金属製品', '情報通信業', '食料品', '医薬品', '陸運業',
+  '電気機器', '輸送用機器', 'その他製品', '倉庫運輸関連業', 'ETF他', '米国ETF'
+]);
+const sectorSensitivity = sector => DEFENSIVE_SECTORS.has((sector || '').replace(/[・･、､]/g, '')) ? 'defensive' : 'cyclical';
+
 const fmtYen = n => '¥' + Math.round(n).toLocaleString();
 const fmtSignedYen = n => (n >= 0 ? '+' : '−') + '¥' + Math.abs(Math.round(n)).toLocaleString();
 const fmtPct = (n, d = 2) => n.toFixed(d) + '%';
@@ -1717,15 +1756,18 @@ function enrichHolding(h) {
   const m = h.manual || {};
   const shares = h.shares || 0;
   const avgPrice = h.avgPrice || 0;
-  const price = (s && s.currentPrice > 0) ? s.currentPrice : (m.price || 0);
+  const price = (h.priceOverride > 0) ? h.priceOverride
+    : (s && s.currentPrice > 0) ? s.currentPrice : (m.price || 0);
   const divPS = (s && s.dividend && s.dividend.length) ? s.dividend[s.dividend.length - 1] : (m.dividendPerShare || 0);
   const nisaShares = Math.min(h.nisaShares != null ? h.nisaShares : 0, shares);
   const annualDiv = divPS * shares;
   const afterTaxDiv = divPS * nisaShares + divPS * (shares - nisaShares) * (1 - TAX_RATE);
+  const sector = (s && (s.s33Name || s.sector)) || m.sector || 'その他';
   return {
     code: h.code,
     name: (s && (s.jaName || s.name)) || m.name || h.code,
-    sector: (s && (s.s33Name || s.sector)) || m.sector || 'その他',
+    sector,
+    sensitivity: sectorSensitivity(sector),
     shares, avgPrice, nisaShares, price, divPS,
     cost: avgPrice * shares,
     value: price * shares,
@@ -1738,15 +1780,17 @@ function enrichHolding(h) {
 
 function computePF(holdings) {
   const rows = holdings.map(enrichHolding);
-  const t = { value: 0, cost: 0, div: 0, divAT: 0 };
+  const t = { value: 0, cost: 0, div: 0, divAT: 0, defVal: 0 };
   const sectors = {};
   rows.forEach(r => {
     t.value += r.value; t.cost += r.cost; t.div += r.annualDiv; t.divAT += r.afterTaxDiv;
+    if (r.sensitivity === 'defensive') t.defVal += r.value;
     sectors[r.sector] = (sectors[r.sector] || 0) + r.value;
   });
   const topSector = Object.entries(sectors).sort((a, b) => b[1] - a[1])[0];
   return {
     rows, sectors,
+    defensivePct: t.value > 0 ? t.defVal / t.value * 100 : 0,
     totalValue: t.value, totalCost: t.cost,
     pl: t.value - t.cost,
     plPct: t.cost > 0 ? (t.value - t.cost) / t.cost * 100 : 0,
@@ -1763,10 +1807,12 @@ function simHoldingObj() {
   if (!SIM) return null;
   const s = STOCK_CACHE[SIM.code];
   if (!s) return null;
+  const price = SIM.price > 0 ? SIM.price : (s.currentPrice || 0);
   return {
     code: SIM.code,
     shares: SIM.shares,
-    avgPrice: s.currentPrice || 0,
+    avgPrice: price,
+    priceOverride: SIM.price > 0 ? SIM.price : 0,
     nisaShares: SIM.nisa ? SIM.shares : 0,
     isSim: true,
   };
@@ -1846,6 +1892,14 @@ function renderPortfolio() {
       <div class="pf-tile-val">${fmtPct(base.topSectorPct, 1)}</div>
       <div class="pf-tile-sub">${base.topSectorName}</div>
     </div>
+    <div class="pf-tile">
+      <div class="pf-tile-lbl">ディフェンシブ比率</div>
+      <div class="pf-tile-val" style="color:var(--accent2)">${fmtPct(base.defensivePct, 1)}</div>
+      <div class="sens-bar" title="ディフェンシブ ${fmtPct(base.defensivePct, 1)} / 景気敏感 ${fmtPct(100 - base.defensivePct, 1)}">
+        <span style="width:${base.defensivePct}%"></span>
+      </div>
+      <div class="pf-tile-sub">景気敏感 ${fmtPct(100 - base.defensivePct, 1)}</div>
+    </div>
   </div>`;
 
   // --- simulation banner ---
@@ -1863,14 +1917,15 @@ function renderPortfolio() {
     };
     html += `<div class="sim-banner">
       <div class="sim-banner-top">
-        <div class="sim-banner-title">📊 組入シミュレーション: ${simRow.code} ${simRow.name}（${simRow.sector}）</div>
-        <span class="sim-badge">${simRow.shares}株 ・ ${fmtYen(investment)} ・ ${SIM.nisa ? 'NISA' : '課税口座'}</span>
+        <div class="sim-banner-title">📊 組入シミュレーション: ${simRow.code} ${simRow.name}（${simRow.sector} ・ ${simRow.sensitivity === 'defensive' ? 'ディフェンシブ' : '景気敏感'}）</div>
+        <span class="sim-badge">${simRow.shares}株 × @${fmtYen(simRow.price)}${SIM.price > 0 ? '（手動）' : ''} ＝ ${fmtYen(investment)} ・ ${SIM.nisa ? 'NISA' : '課税口座'}</span>
       </div>
       <div class="sim-compare-grid">
         ${metric('評価額合計', base.totalValue, after.totalValue, fmtYen, fmtSignedYen)}
         ${metric('年間配当（税引後）', base.totalDivAT, after.totalDivAT, fmtYen, d => fmtSignedYen(d) + '/年')}
         ${metric('配当利回り', base.yieldNow, after.yieldNow, v => fmtPct(v), d => (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(2) + 'pt')}
         ${metric('最大業種比率', base.topSectorPct, after.topSectorPct, v => fmtPct(v, 1) + '（' + (v === base.topSectorPct ? base.topSectorName : after.topSectorName) + '）', d => (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(1) + 'pt')}
+        ${metric('ディフェンシブ比率', base.defensivePct, after.defensivePct, v => fmtPct(v, 1), d => (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(1) + 'pt')}
       </div>
     </div>`;
   }
@@ -2012,7 +2067,7 @@ function holdingsTableHTML(cur) {
       return `<tr class="${r.isSim ? 'sim-row' : ''}">
         <td style="font-family:var(--mono)">${r.code}${r.isSim ? ' <span class="sim-badge">試算</span>' : ''}</td>
         <td class="l" style="max-width:220px;overflow:hidden;text-overflow:ellipsis" title="${r.name}">${r.name}${warn ? ' ⚠' : ''}</td>
-        <td class="l" style="color:var(--ink3);font-size:11px">${r.sector}</td>
+        <td class="l" style="color:var(--ink3);font-size:11px">${r.sector}<br><span class="sens-chip ${r.sensitivity}">${r.sensitivity === 'defensive' ? 'ディフェンシブ' : '景気敏感'}</span></td>
         <td>${r.isSim ? r.shares.toLocaleString() : `<input class="inp-mini" type="number" min="0" step="1" value="${r.shares}" onchange="updateHolding(${i},'shares',this.value)">`}</td>
         <td>${r.isSim ? r.nisaShares.toLocaleString() : `<input class="inp-mini" type="number" min="0" step="1" value="${r.nisaShares}" onchange="updateHolding(${i},'nisaShares',this.value)">`}</td>
         <td>${r.isSim ? fmtYen(r.avgPrice) : `<input class="inp-mini" type="number" min="0" value="${r.avgPrice}" onchange="updateHolding(${i},'avgPrice',this.value)">`}</td>
@@ -2193,15 +2248,18 @@ function toggleSimNisa() {
 function runSimulation() {
   const code = parseCodeInput(document.getElementById('simStockInput').value);
   const shares = parseFloat(document.getElementById('simShares').value);
+  const price = parseFloat(document.getElementById('simPrice').value) || 0;
   if (!code || !STOCK_CACHE[code]) { alert('銘柄が見つかりません。コード（例: 8058）または正確な銘柄名で指定してください。'); return; }
   if (!shares || shares <= 0) { alert('株数を入力してください'); return; }
-  SIM = { code, shares, nisa: simNisa };
+  if (price < 0) { alert('株価は0以上で入力してください'); return; }
+  SIM = { code, shares, price, nisa: simNisa };
   renderPortfolio();
 }
 
 function clearSimulation() {
   SIM = null;
   document.getElementById('simStockInput').value = '';
+  document.getElementById('simPrice').value = '';
   renderPortfolio();
 }
 
@@ -2210,7 +2268,8 @@ function simulateFromModal(code) {
   currentModalCode = null;
   const s = STOCK_CACHE[code];
   document.getElementById('simStockInput').value = `${code} ${(s && (s.jaName || s.name)) || ''}`.trim();
-  SIM = { code, shares: parseFloat(document.getElementById('simShares').value) || 100, nisa: simNisa };
+  document.getElementById('simPrice').value = '';
+  SIM = { code, shares: parseFloat(document.getElementById('simShares').value) || 100, price: 0, nisa: simNisa };
   setMainView('portfolio');
   window.scrollTo({ top: 0 });
 }
