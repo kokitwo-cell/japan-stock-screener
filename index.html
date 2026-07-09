@@ -645,6 +645,29 @@ header .status-pill.error { color: var(--accent); }
   background: var(--accent3); color: white;
   padding: 2px 8px; border-radius: 10px;
 }
+.sim-op-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.sim-op-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  border: 1px solid;
+}
+.sim-op-chip.buy { color: var(--accent3); border-color: #b8cbdd; background: #f4f8fb; }
+.sim-op-chip.sell { color: var(--accent); border-color: #f0c8be; background: #fdf0ec; }
+.sim-op-chip .op-x {
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0 3px;
+  border-radius: 50%;
+  transition: all 0.1s;
+}
+.sim-op-chip .op-x:hover { background: currentColor; }
+.sim-op-chip.buy .op-x:hover, .sim-op-chip.sell .op-x:hover { color: white; background: var(--accent); }
+
 .sim-compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .sim-metric { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
 .sim-metric .lbl { font-family: var(--mono); font-size: 9px; letter-spacing: 1px; color: var(--ink3); margin-bottom: 4px; }
@@ -880,23 +903,26 @@ header .status-pill.error { color: var(--accent); }
         <span class="toggle-label">NISA枠で購入（非課税）</span>
         <div class="toggle-switch on" id="swSimNisa"></div>
       </div>
+      <button class="run-btn" onclick="addSimBuy()">
+        <div class="btn-inner">＋ 組入に追加</div>
+      </button>
 
-      <div class="filter-section-title" style="margin-top:8px">売却（任意 ・ 組入と同時指定可）</div>
+      <div class="filter-section-title" style="margin-top:8px">売却（複数可 ・ 組入と同時指定可）</div>
       <div class="input-wrap">
         <div class="input-label">売却する保有銘柄</div>
         <select class="inp" id="simSellSelect">
-          <option value="">— 売却しない —</option>
+          <option value="">— 選択してください —</option>
         </select>
       </div>
       <div class="input-wrap">
         <div class="input-label">売却株数</div>
         <input class="inp" type="number" id="simSellShares" placeholder="空欄=全株" min="1" step="1">
       </div>
-
-      <button class="run-btn" onclick="runSimulation()">
-        <div class="btn-inner">▶ 試算する</div>
+      <button class="run-btn" style="background:var(--accent)" onclick="addSimSell()">
+        <div class="btn-inner">＋ 売却に追加</div>
       </button>
-      <button class="sort-btn" id="simClearBtn" onclick="clearSimulation()" style="display:none">✕ シミュレーション解除</button>
+
+      <button class="sort-btn" id="simClearBtn" onclick="clearSimulation()" style="display:none">✕ シミュレーションを全解除</button>
     </div>
 
     <div class="sidebar-title" style="margin-top:12px;">HOLDINGS</div>
@@ -1705,8 +1731,8 @@ let TAX_RATE = 0.20315;
 let DEFAULT_PF = null;
 let PORTFOLIO = null;
 let PF_SOURCE = '';
-let SIM = null;          // 組入: { code, shares, price, nisa }
-let SIM_SELL = null;     // 売却: { code, shares }
+let SIM_BUYS = [];       // 組入: [{ code, shares, price, nisa }]
+let SIM_SELLS = [];      // 売却: [{ code, shares }]
 let simNisa = true;
 let mainView = 'screener';
 const pfCharts = {};
@@ -1820,35 +1846,33 @@ function computePF(holdings) {
   };
 }
 
-function simHoldingObj() {
-  if (!SIM) return null;
-  const s = STOCK_CACHE[SIM.code];
-  if (!s) return null;
-  const price = SIM.price > 0 ? SIM.price : (s.currentPrice || 0);
-  return {
-    code: SIM.code,
-    shares: SIM.shares,
-    avgPrice: price,
-    priceOverride: SIM.price > 0 ? SIM.price : 0,
-    nisaShares: SIM.nisa ? SIM.shares : 0,
-    isSim: true,
-  };
+function simHoldingObjs() {
+  return SIM_BUYS.map(b => {
+    const s = STOCK_CACHE[b.code];
+    if (!s) return null;
+    const price = b.price > 0 ? b.price : (s.currentPrice || 0);
+    return {
+      code: b.code,
+      shares: b.shares,
+      avgPrice: price,
+      priceOverride: b.price > 0 ? b.price : 0,
+      nisaShares: b.nisa ? b.shares : 0,
+      isSim: true,
+    };
+  }).filter(Boolean);
 }
 
 // 組入・売却を適用したシミュレーション後の保有リスト（売却行は残高0でも表示用に残す）
 function simulatedHoldings() {
-  let list = PORTFOLIO.map(h => ({ ...h }));
-  if (SIM_SELL) {
-    list = list.map(h => {
-      if (h.code !== SIM_SELL.code) return h;
-      const sold = Math.min(SIM_SELL.shares, h.shares);
-      const remaining = h.shares - sold;
-      return { ...h, shares: remaining, nisaShares: Math.min(h.nisaShares || 0, remaining), isSimSell: true, soldShares: sold };
-    });
-  }
-  const buy = simHoldingObj();
-  if (buy) list.push(buy);
-  return list;
+  const sellMap = {};
+  SIM_SELLS.forEach(s => { sellMap[s.code] = (sellMap[s.code] || 0) + s.shares; });
+  let list = PORTFOLIO.map(h => {
+    if (!sellMap[h.code]) return { ...h };
+    const sold = Math.min(sellMap[h.code], h.shares);
+    const remaining = h.shares - sold;
+    return { ...h, shares: remaining, nisaShares: Math.min(h.nisaShares || 0, remaining), isSimSell: true, soldShares: sold };
+  });
+  return [...list, ...simHoldingObjs()];
 }
 
 // ---- sector colors: fixed assignment by value rank, shared across before/after ----
@@ -1886,8 +1910,7 @@ function renderPortfolio() {
   destroyPfCharts();
 
   const base = computePF(PORTFOLIO);
-  const simH = simHoldingObj();
-  const simActive = !!(simH || SIM_SELL);
+  const simActive = SIM_BUYS.length > 0 || SIM_SELLS.length > 0;
   const after = simActive ? computePF(simulatedHoldings()) : null;
   const cur = after || base;
   updateSellSelect();
@@ -1932,9 +1955,6 @@ function renderPortfolio() {
 
   // --- simulation banner ---
   if (after) {
-    const simRow = simH ? enrichHolding(simH) : null;
-    const sellBase = SIM_SELL ? base.rows.find(r => r.code === SIM_SELL.code) : null;
-    const sellShares = sellBase ? Math.min(SIM_SELL.shares, sellBase.shares) : 0;
     const metric = (lbl, b, a, fmt, deltaFmt) => {
       const d = a - b;
       const cls = d > 0 ? 'delta-up' : (d < 0 ? 'delta-down' : '');
@@ -1944,21 +1964,30 @@ function renderPortfolio() {
         <span class="delta-chip ${cls}">${deltaFmt(d)}</span>
       </div>`;
     };
-    const titleParts = [];
-    const badges = [];
-    if (simRow) {
-      titleParts.push(`組入 ${simRow.code} ${simRow.name}（${simRow.sector} ・ ${simRow.sensitivity === 'defensive' ? 'ディフェンシブ' : '景気敏感'}）`);
-      badges.push(`<span class="sim-badge">組入 ${simRow.shares}株 × @${fmtYen(simRow.price)}${SIM.price > 0 ? '（手動）' : ''} ＝ ${fmtYen(simRow.value)} ・ ${SIM.nisa ? 'NISA' : '課税口座'}</span>`);
-    }
-    if (sellBase) {
-      titleParts.push(`売却 ${sellBase.code} ${sellBase.name}${sellShares < sellBase.shares ? `（${sellShares}株）` : '（全株）'}`);
-      badges.push(`<span class="sim-badge" style="background:var(--accent)">売却 ${sellShares}株 × @${fmtYen(sellBase.price)} ＝ ${fmtYen(sellBase.price * sellShares)}</span>`);
-    }
+    let totalBuy = 0, totalSell = 0;
+    const chips = [];
+    simHoldingObjs().forEach(b => {
+      const r = enrichHolding(b);
+      totalBuy += r.value;
+      const buyOp = SIM_BUYS.find(x => x.code === b.code);
+      chips.push(`<span class="sim-op-chip buy">組入 ${r.code} ${r.name} ${r.shares}株 × @${fmtYen(r.price)}${buyOp && buyOp.price > 0 ? '（手動）' : ''}${buyOp && buyOp.nisa ? ' ・NISA' : ''}
+        <span class="op-x" onclick="removeSimBuy('${r.code}')" title="この組入を解除">✕</span></span>`);
+    });
+    SIM_SELLS.forEach(sOp => {
+      const r = base.rows.find(x => x.code === sOp.code);
+      if (!r) return;
+      const sold = Math.min(sOp.shares, r.shares);
+      totalSell += r.price * sold;
+      chips.push(`<span class="sim-op-chip sell">売却 ${r.code} ${r.name} ${sold < r.shares ? sold + '株' : '全株'} × @${fmtYen(r.price)}
+        <span class="op-x" onclick="removeSimSell('${r.code}')" title="この売却を解除">✕</span></span>`);
+    });
+    const net = totalBuy - totalSell;
     html += `<div class="sim-banner">
       <div class="sim-banner-top">
-        <div class="sim-banner-title">📊 シミュレーション: ${titleParts.join(' ／ ')}</div>
-        <span style="display:flex; gap:6px; flex-wrap:wrap">${badges.join('')}</span>
+        <div class="sim-banner-title">📊 シミュレーション（組入 ${SIM_BUYS.length}銘柄 ・ 売却 ${SIM_SELLS.length}銘柄）</div>
+        <span class="sim-badge" title="組入合計 ${fmtYen(totalBuy)} − 売却合計 ${fmtYen(totalSell)}">差引資金 ${net >= 0 ? `−${fmtYen(net)}（追加投資）` : `+${fmtYen(-net)}（回収）`}</span>
       </div>
+      <div class="sim-op-chips">${chips.join('')}</div>
       <div class="sim-compare-grid">
         ${metric('評価額合計', base.totalValue, after.totalValue, fmtYen, fmtSignedYen)}
         ${metric('年間配当（税引後）', base.totalDivAT, after.totalDivAT, fmtYen, d => fmtSignedYen(d) + '/年')}
@@ -2049,7 +2078,7 @@ function renderPortfolio() {
           <h4>業種別比率の変化</h4>
           <table class="pf-sector-delta-table">
             <thead><tr><th>業種</th><th>現在</th><th>組入後</th><th>変化</th></tr></thead>
-            <tbody>${sectorDeltaRows(base, after, simH)}</tbody>
+            <tbody>${sectorDeltaRows(base, after)}</tbody>
           </table>
         </div>
       </div>
@@ -2073,21 +2102,21 @@ function renderPortfolio() {
 function updateSellSelect() {
   const sel = document.getElementById('simSellSelect');
   if (!sel || !PORTFOLIO) return;
-  const current = SIM_SELL ? SIM_SELL.code : sel.value;
+  const current = sel.value;
   const opts = [...PORTFOLIO]
     .map(h => enrichHolding(h))
     .sort((a, b) => a.code.localeCompare(b.code))
     .map(r => `<option value="${r.code}" ${r.code === current ? 'selected' : ''}>${r.code} ${r.name}（${r.shares}株）</option>`);
-  sel.innerHTML = '<option value="">— 売却しない —</option>' + opts.join('');
+  sel.innerHTML = '<option value="">— 選択してください —</option>' + opts.join('');
 }
 
-function sectorDeltaRows(base, after, simH) {
+function sectorDeltaRows(base, after) {
   const hlSectors = new Set();
-  if (simH) hlSectors.add(enrichHolding(simH).sector);
-  if (SIM_SELL) {
-    const sellRow = base.rows.find(r => r.code === SIM_SELL.code);
+  simHoldingObjs().forEach(b => hlSectors.add(enrichHolding(b).sector));
+  SIM_SELLS.forEach(sOp => {
+    const sellRow = base.rows.find(r => r.code === sOp.code);
     if (sellRow) hlSectors.add(sellRow.sector);
-  }
+  });
   const names = [...new Set([...Object.keys(after.sectors), ...Object.keys(base.sectors)])];
   return names
     .map(n => ({
@@ -2314,38 +2343,61 @@ function toggleSimNisa() {
   simNisa = !simNisa;
   document.getElementById('toggleSimNisa').classList.toggle('active', simNisa);
   document.getElementById('swSimNisa').classList.toggle('on', simNisa);
-  if (SIM) { SIM.nisa = simNisa; renderPortfolio(); }
 }
 
-function runSimulation() {
-  const buyRaw = document.getElementById('simStockInput').value.trim();
-  let buy = null;
-  if (buyRaw) {
-    const code = parseCodeInput(buyRaw);
-    const shares = parseFloat(document.getElementById('simShares').value);
-    const price = parseFloat(document.getElementById('simPrice').value) || 0;
-    if (!code || !STOCK_CACHE[code]) { alert('組入銘柄が見つかりません。コード（例: 8058）または正確な銘柄名で指定してください。'); return; }
-    if (!shares || shares <= 0) { alert('組入する株数を入力してください'); return; }
-    buy = { code, shares, price, nisa: simNisa };
-  }
-  const sellCode = document.getElementById('simSellSelect').value;
-  let sell = null;
-  if (sellCode) {
-    const h = PORTFOLIO.find(x => x.code === sellCode);
-    if (!h) { alert('売却対象の銘柄が保有一覧にありません'); return; }
-    const raw = parseFloat(document.getElementById('simSellShares').value);
-    const shares = (raw > 0) ? Math.min(raw, h.shares) : h.shares;  // 空欄=全株
-    sell = { code: sellCode, shares };
-  }
-  if (!buy && !sell) { alert('組入する銘柄か売却する銘柄を指定してください'); return; }
-  SIM = buy;
-  SIM_SELL = sell;
+// 同一銘柄の組入は株数を合算（取得単価は加重平均）
+function mergeSimBuy(buy) {
+  const existing = SIM_BUYS.find(b => b.code === buy.code);
+  if (!existing) { SIM_BUYS.push(buy); return; }
+  const s = STOCK_CACHE[buy.code] || {};
+  const priceOf = b => b.price > 0 ? b.price : (s.currentPrice || 0);
+  const total = existing.shares + buy.shares;
+  const avg = (priceOf(existing) * existing.shares + priceOf(buy) * buy.shares) / total;
+  existing.price = Math.round(avg * 100) / 100;
+  existing.shares = total;
+  existing.nisa = buy.nisa;
+}
+
+function addSimBuy() {
+  const code = parseCodeInput(document.getElementById('simStockInput').value);
+  const shares = parseFloat(document.getElementById('simShares').value);
+  const price = parseFloat(document.getElementById('simPrice').value) || 0;
+  if (!code || !STOCK_CACHE[code]) { alert('組入銘柄が見つかりません。コード（例: 8058）または正確な銘柄名で指定してください。'); return; }
+  if (!shares || shares <= 0) { alert('組入する株数を入力してください'); return; }
+  mergeSimBuy({ code, shares, price, nisa: simNisa });
+  document.getElementById('simStockInput').value = '';
+  document.getElementById('simPrice').value = '';
+  renderPortfolio();
+}
+
+function addSimSell() {
+  const code = document.getElementById('simSellSelect').value;
+  if (!code) { alert('売却する銘柄を選択してください'); return; }
+  const h = PORTFOLIO.find(x => x.code === code);
+  if (!h) { alert('売却対象の銘柄が保有一覧にありません'); return; }
+  const raw = parseFloat(document.getElementById('simSellShares').value);
+  const shares = (raw > 0) ? Math.min(raw, h.shares) : h.shares;  // 空欄=全株
+  const existing = SIM_SELLS.find(x => x.code === code);
+  if (existing) existing.shares = Math.min(existing.shares + shares, h.shares);
+  else SIM_SELLS.push({ code, shares });
+  document.getElementById('simSellSelect').value = '';
+  document.getElementById('simSellShares').value = '';
+  renderPortfolio();
+}
+
+function removeSimBuy(code) {
+  SIM_BUYS = SIM_BUYS.filter(b => b.code !== code);
+  renderPortfolio();
+}
+
+function removeSimSell(code) {
+  SIM_SELLS = SIM_SELLS.filter(s => s.code !== code);
   renderPortfolio();
 }
 
 function clearSimulation() {
-  SIM = null;
-  SIM_SELL = null;
+  SIM_BUYS = [];
+  SIM_SELLS = [];
   document.getElementById('simStockInput').value = '';
   document.getElementById('simPrice').value = '';
   document.getElementById('simSellSelect').value = '';
@@ -2356,10 +2408,7 @@ function clearSimulation() {
 function simulateFromModal(code) {
   document.getElementById('modal').style.display = 'none';
   currentModalCode = null;
-  const s = STOCK_CACHE[code];
-  document.getElementById('simStockInput').value = `${code} ${(s && (s.jaName || s.name)) || ''}`.trim();
-  document.getElementById('simPrice').value = '';
-  SIM = { code, shares: parseFloat(document.getElementById('simShares').value) || 100, price: 0, nisa: simNisa };
+  mergeSimBuy({ code, shares: parseFloat(document.getElementById('simShares').value) || 100, price: 0, nisa: simNisa });
   setMainView('portfolio');
   window.scrollTo({ top: 0 });
 }
