@@ -1912,9 +1912,10 @@ function renderPortfolio() {
   destroyPfCharts();
 
   const base = computePF(PORTFOLIO);
+  // 常に「現在 vs 組入後」レイアウトで表示（取引0件なら組入後=現在）
   const simActive = SIM_BUYS.length > 0 || SIM_SELLS.length > 0;
-  const after = simActive ? computePF(simulatedHoldings()) : null;
-  const cur = after || base;
+  const after = computePF(simulatedHoldings());
+  const cur = after;
   updateSellSelect();
 
   document.getElementById('pfHoldingsNum').textContent = base.count;
@@ -1982,9 +1983,9 @@ function renderPortfolio() {
     html += `<div class="sim-banner">
       <div class="sim-banner-top">
         <div class="sim-banner-title">📊 シミュレーション（組入 ${SIM_BUYS.length}銘柄 ・ 売却 ${SIM_SELLS.length}銘柄）</div>
-        <span class="sim-badge" title="組入合計 ${fmtYen(totalBuy)} − 売却合計 ${fmtYen(totalSell)}">差引資金 ${net >= 0 ? `−${fmtYen(net)}（追加投資）` : `+${fmtYen(-net)}（回収）`}</span>
+        <span class="sim-badge" title="組入合計 ${fmtYen(totalBuy)} − 売却合計 ${fmtYen(totalSell)}">差引資金 ${net > 0 ? `−${fmtYen(net)}（追加投資）` : net < 0 ? `+${fmtYen(-net)}（回収）` : fmtYen(0)}</span>
       </div>
-      <div class="sim-op-chips">${chips.join('')}</div>
+      <div class="sim-op-chips">${chips.length ? chips.join('') : '<span style="font-size:11px;color:var(--ink3)">サイドバーの「＋ 組入に追加」「＋ 売却に追加」で取引を試算できます</span>'}</div>
       <div class="sim-compare-grid">
         ${metric('評価額合計', base.totalValue, after.totalValue, fmtYen, fmtSignedYen)}
         ${metric('年間配当（税引後）', base.totalDivAT, after.totalDivAT, fmtYen, d => fmtSignedYen(d) + '/年')}
@@ -2018,9 +2019,8 @@ function renderPortfolio() {
   };
 
   const baseFolded = foldSectors(base.sectors, colorMap);
-  if (after) {
-    const afterFolded = foldSectors(after.sectors, colorMap);
-    html += `<div class="pf-section">
+  const afterFolded = foldSectors(after.sectors, colorMap);
+  html += `<div class="pf-section">
       <div class="pf-section-title">業種別構成 ─ 現在 vs 組入後</div>
       <div class="pf-charts-grid">
         <div class="pf-chart-box">
@@ -2043,31 +2043,16 @@ function renderPortfolio() {
         </div>
       </div>
     </div>`;
-  } else {
-    html += `<div class="pf-section">
-      <div class="pf-chart-box">
-        <h4>業種別構成（評価額ベース）</h4>
-        <div class="pf-donut-flex">
-          <div class="pf-donut-wrap"><canvas id="pfDonutBefore"></canvas>
-            <div class="pf-donut-center"><span class="n">${fmtYen(base.totalValue)}</span><span class="l">${base.count}銘柄</span></div>
-          </div>
-          <div class="pf-legend ${baseFolded.length > 10 ? 'two-col' : ''}">${donutLegend(baseFolded, base.totalValue)}</div>
-        </div>
-      </div>
-    </div>`;
-  }
 
-  if (after) {
-    html += `<div class="pf-section">
-      <div class="pf-chart-box">
-        <h4>業種別比率の変化</h4>
-        <table class="pf-sector-delta-table">
-          <thead><tr><th>業種</th><th>現在</th><th>組入後</th><th>変化</th></tr></thead>
-          <tbody>${sectorDeltaRows(base, after)}</tbody>
-        </table>
-      </div>
-    </div>`;
-  }
+  html += `<div class="pf-section">
+    <div class="pf-chart-box">
+      <h4>業種別比率の変化</h4>
+      <table class="pf-sector-delta-table">
+        <thead><tr><th>業種</th><th>現在</th><th>組入後</th><th>変化</th></tr></thead>
+        <tbody>${sectorDeltaRows(base, after)}</tbody>
+      </table>
+    </div>
+  </div>`;
 
   // --- holdings table ---
   html += `<div class="pf-section">
@@ -2086,7 +2071,9 @@ function updateSellSelect() {
   const sel = document.getElementById('simSellSelect');
   if (!sel || !PORTFOLIO) return;
   const current = sel.value;
+  const inSim = new Set(SIM_SELLS.map(s => s.code));  // 売却追加済みの銘柄は選択肢から外す
   const opts = [...PORTFOLIO]
+    .filter(h => !inSim.has(h.code))
     .map(h => enrichHolding(h))
     .sort((a, b) => a.code.localeCompare(b.code))
     .map(r => `<option value="${r.code}" ${r.code === current ? 'selected' : ''}>${r.code} ${r.name}（${r.shares}株）</option>`);
