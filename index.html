@@ -1522,7 +1522,6 @@ function openModal(code) {
         <span class="copy-chip" onclick="copyCode('${s.code}', this)" title="クリックしてコピー">📋 ${s.code}</span>
         <a href="https://irbank.net/${s.code}/results" target="_blank" rel="noopener noreferrer" class="link-chip" title="IR BANKで業績を見る">🏦 IR BANK</a>
         <a href="https://finance.yahoo.co.jp/quote/${s.code}.T" target="_blank" rel="noopener noreferrer" class="link-chip" title="Yahoo!ファイナンスで見る">📈 Yahoo!</a>
-        <span class="link-chip" style="cursor:pointer" onclick="simulateFromModal('${s.code}')" title="ポートフォリオに組み入れた場合の変化を試算">📊 組入試算</span>
         <span class="sector-chip">${s.s33Name || s.sector || '—'}</span>
       </div>
 
@@ -2511,14 +2510,6 @@ function clearSimulation() {
   document.getElementById('simSellSelect').value = '';
   document.getElementById('simSellShares').value = '';
   renderPortfolio();
-}
-
-function simulateFromModal(code) {
-  document.getElementById('modal').style.display = 'none';
-  currentModalCode = null;
-  mergeSimBuy({ code, shares: parseFloat(document.getElementById('simShares').value) || 100, price: 0, nisa: simNisa });
-  setMainView('portfolio');
-  window.scrollTo({ top: 0 });
 }
 
 window.addEventListener('load', async () => {
