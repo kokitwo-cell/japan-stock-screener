@@ -965,14 +965,17 @@ header .status-pill.error { color: var(--accent); }
 
     <div class="note-box">
       💾 保有データの変更はこのブラウザ（localStorage）に保存されます。<br>
+      ブラウザのキャッシュ削除で消えるため、変更したら「デフォルトとして保存」で
+      GitHub上のデフォルト（data/portfolio.json）に反映しておくと全端末・キャッシュ削除後も維持されます。<br>
       株価・配当・業種はスクリーナーのデータから自動反映されます。
     </div>
 
+    <button class="sort-btn" onclick="saveAsDefaultPortfolio(this)" title="現在の保有データをコピーしてGitHubのdata/portfolio.json編集画面を開きます。貼り付けてCommitすればデフォルトになります" style="padding:8px; font-weight:600;">☁ デフォルトとして保存（GitHubへ）</button>
     <div style="display:flex; gap:6px;">
       <button class="sort-btn" style="flex:1;" onclick="exportPortfolio(this)" title="現在の保有データをportfolio.json形式でコピー（data/portfolio.jsonに貼り替えると全端末に反映）">⧉ データをコピー</button>
       <button class="sort-btn" style="flex:1;" onclick="downloadPortfolio()" title="portfolio.jsonをダウンロード">↓ JSON保存</button>
     </div>
-    <button class="sort-btn" onclick="resetPortfolio()" title="スプレッドシート由来の初期データに戻す">↺ 初期データに戻す</button>
+    <button class="sort-btn" onclick="resetPortfolio()" title="デフォルト（data/portfolio.json）の内容に戻す">↺ デフォルトに戻す</button>
   </aside>
 
   <main class="main">
@@ -1228,6 +1231,7 @@ function screenStocks(cache, p) {
   const results = [];
   for (const code in cache) {
     const data = cache[code];
+    if (data.isETF) continue; // ETF/REITはポートフォリオ用データ。業績スクリーニング対象外
     const rt = data.revenueTrend || {};
     const pt = data.profitTrend || {};
     const et = data.epsTrend || {};
@@ -2405,7 +2409,7 @@ function addHolding() {
 }
 
 function resetPortfolio() {
-  if (!confirm('保有データをスプレッドシート由来の初期データに戻しますか？\nこのブラウザでの変更はすべて破棄されます。')) return;
+  if (!confirm('保有データをデフォルト（data/portfolio.json）の内容に戻しますか？\nこのブラウザでの変更はすべて破棄されます。')) return;
   localStorage.removeItem(PF_STORAGE_KEY);
   PORTFOLIO = JSON.parse(JSON.stringify(DEFAULT_PF));
   clearSimulation();
@@ -2425,6 +2429,26 @@ function portfolioJSON() {
     taxRate: TAX_RATE,
     holdings
   }, null, 2) + '\n';
+}
+
+// 現在の保有データをクリップボードにコピーし、GitHubのportfolio.json編集画面を開く。
+// 貼り付けてCommitすればそれが新しいデフォルトになり、キャッシュ削除・別端末でも維持される。
+const PF_GITHUB_EDIT_URL = 'https://github.com/kokitwo-cell/japan-stock-screener/edit/main/data/portfolio.json';
+function saveAsDefaultPortfolio(el) {
+  const json = portfolioJSON();
+  const openEditor = () => {
+    alert('現在の保有データをコピーしました。\n\nこのあと開くGitHubの編集画面で、\n1. 中身をすべて選択（Ctrl/Cmd+A）して貼り付け\n2. 右上の「Commit changes...」で保存\nしてください。次回の株価更新後にデフォルトへ反映されます。');
+    window.open(PF_GITHUB_EDIT_URL, '_blank');
+  };
+  navigator.clipboard.writeText(json).then(() => {
+    const orig = el.textContent;
+    el.textContent = '✅ コピーしました';
+    setTimeout(() => { el.textContent = orig; }, 1800);
+    openEditor();
+  }).catch(() => {
+    alert('クリップボードにコピーできませんでした。「⧉ データをコピー」または「↓ JSON保存」の内容を data/portfolio.json に貼り付けてください。');
+    window.open(PF_GITHUB_EDIT_URL, '_blank');
+  });
 }
 
 function exportPortfolio(el) {

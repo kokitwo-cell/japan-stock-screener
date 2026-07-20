@@ -45,6 +45,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 CACHE_FILE         = os.path.join(DATA_DIR, "stock_cache.json")
 TSE_CODES_FILE     = os.path.join(DATA_DIR, "tse_codes.json")
 JQUANTS_INFO_FILE  = os.path.join(DATA_DIR, "jquants_info.json")
+PORTFOLIO_FILE     = os.path.join(DATA_DIR, "portfolio.json")
 
 CACHE_EXPIRE_HOURS = 168
 MAX_WORKERS        = 3
@@ -332,6 +333,9 @@ def apply_jquants_info(cache, jquants_info):
         return 0
     updated = 0
     for code, data in cache.items():
+        if data.get("isETF"):
+            # ETF/REITは専用ルートで業種(ETF・他)を設定済み。J-Quantsの「その他」で上書きしない
+            continue
         info = jquants_info.get(str(code).zfill(4))
         if info:
             data["jaName"]  = info["jaName"] or data.get("jaName")
@@ -562,6 +566,143 @@ def fetch_stock_data(code, name_hint=""):
         }
     except Exception:
         return None
+
+
+# ============================================================
+#  ETF / REIT 専用ルート
+# ============================================================
+def fetch_etf_data(code, name_hint=""):
+    """ETF・REIT等、財務諸表を持たない上場商品の価格・分配金を取得する。
+    fetch_stock_data と違い quoteType や損益計算書の有無で弾かない。"""
+    try:
+        import pandas as pd
+        ticker = yf.Ticker(f"{code}.T")
+        try:
+            info = ticker.info or {}
+        except Exception:
+            info = {}
+
+        # 通常株式は個別株ルート(fetch_stock_data)の担当。誤ってETF扱いで登録しない
+        if str(info.get("quoteType", "")).upper() == "EQUITY":
+            return None
+
+        price = 0.0
+        try:
+            hist = ticker.history(period="5d")
+            if hist is not None and not hist.empty:
+                price = float(hist["Close"].dropna().iloc[-1])
+        except Exception:
+            pass
+        if price <= 0:
+            price = float(info.get("regularMarketPrice") or info.get("previousClose") or 0)
+        if price <= 0:
+            return None
+
+        div_annual = {}
+        latest_annual_div = 0
+        try:
+            divs = ticker.dividends
+        except Exception:
+            divs = None
+        if divs is not None and not divs.empty:
+            for ts, val in divs.items():
+                div_annual[ts.year] = div_annual.get(ts.year, 0) + float(val)
+            try:
+                tz = divs.index.tz
+                now = pd.Timestamp.now(tz=tz)
+                cutoff = now - pd.DateOffset(months=12)
+                recent = divs[(divs.index >= cutoff) & (divs.index <= now)]
+                latest_annual_div = round(float(recent.sum()), 1) if not recent.empty else 0
+            except Exception:
+                latest_annual_div = 0
+
+        # 暦年別の分配金履歴（当年は集計途中で不完全なため直近12ヶ月合計に置き換える）
+        current_year = datetime.now().year
+        div_years  = sorted(y for y in div_annual if y < current_year)[-9:]
+        div_values = [round(div_annual[y], 1) for y in div_years]
+        if latest_annual_div > 0:
+            div_years.append(current_year)
+            div_values.append(latest_annual_div)
+        elif div_values:
+            latest_annual_div = div_values[-1]
+
+        name = info.get("longName") or info.get("shortName") or name_hint or code
+        div_yield = round(latest_annual_div / price * 100, 2) if latest_annual_div > 0 and price > 0 else 0
+
+        return {
+            "code": code,
+            "name": name,
+            "jaName": name_hint or name,
+            "sector": "ETF・他",
+            "s33Name": "ETF・他",
+            "industry": "ETF",
+            "market": info.get("exchange", ""),
+            "isETF": True,
+            "per": 0,
+            "pbr": 0,
+            "marketCap": info.get("totalAssets") or info.get("marketCap"),
+            "years": [],
+            "revenue": [],
+            "profit": [],
+            "dividend": div_values,
+            "dividendYears": div_years,
+            "dividendYield": div_yield,
+            "currentPrice": round(price, 1),
+            "cachedAt": datetime.now().isoformat(),
+        }
+    except Exception:
+        return None
+
+
+def load_portfolio_holdings():
+    """data/portfolio.json の保有銘柄 [(code, name_hint), ...] を返す"""
+    try:
+        with open(PORTFOLIO_FILE, encoding="utf-8") as f:
+            pf = json.load(f)
+        result = []
+        for h in pf.get("holdings", []):
+            code = str(h.get("code") or "").strip()
+            if code:
+                result.append((code, (h.get("manual") or {}).get("name", "")))
+        return result
+    except Exception as e:
+        print(f"portfolio.json 読み込みエラー: {e}")
+        return []
+
+
+def update_portfolio_etfs(cache):
+    """ポートフォリオ保有銘柄のうち、個別株ルート（財務諸表ベース）で取得できない
+    ETF・REIT等を専用ルートで取得・更新する。毎回の実行で価格・分配金を最新化する。"""
+    targets = []
+    for code, name_hint in load_portfolio_holdings():
+        entry = cache.get(code)
+        if entry is None or entry.get("isETF"):
+            targets.append((code, name_hint))
+    if not targets:
+        return
+
+    print(f"ETF/REITルート更新: {len(targets)}銘柄 ({', '.join(c for c, _ in targets)})")
+    updated = 0
+    for code, name_hint in targets:
+        time.sleep(FETCH_DELAY)
+        result = None
+        # 未取得銘柄はまず個別株ルートを試す（単に前回失敗しただけの個別株かもしれない）
+        if cache.get(code) is None:
+            result = fetch_stock_data(code, name_hint)
+        if result is None:
+            result = fetch_etf_data(code, name_hint)
+        if result is None:
+            print(f"  ⚠️ {code} 取得失敗（既存データを維持）")
+            continue
+        cache[code] = result
+        updated += 1
+        yld = result.get("dividendYield", 0)
+        print(f"  ✔ {code} {result.get('name','')}: 価格 {result.get('currentPrice')}円 / 利回り {yld}%")
+
+    if updated:
+        set_cache(cache)
+        save_cache(cache)
+    print(f"✅ ETF/REIT更新: {updated}/{len(targets)}")
 
 
 # ============================================================
@@ -1008,6 +1149,9 @@ def main():
             codes = codes[:fetch_limit]
             print(f"  取得制限: {fetch_limit}社")
         cache = fetch_all(codes)
+
+    # ポートフォリオ内のETF/REITは個別株と別ルートで毎回更新（1343 東証REIT指数ETF など）
+    update_portfolio_etfs(cache)
 
     # J-Quants 業種情報を反映
     jq = fetch_jquants_info()
