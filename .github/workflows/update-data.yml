@@ -16,6 +16,7 @@ on:
           - full
           - irbank
           - irbank-force
+          - summary
           - diag
       diag_code:
         description: 'diag用銘柄コード(例: 7723)'
@@ -69,6 +70,13 @@ jobs:
         env:
           ENRICH_IRBANK: '1'
           FORCE_IRBANK: '1'
+          JQUANTS_REFRESH_TOKEN: ${{ secrets.JQUANTS_REFRESH_TOKEN }}
+        run: python scripts/update_data.py
+
+      - name: Update data (business summary translation)
+        if: github.event.inputs.mode == 'summary'
+        env:
+          ENRICH_SUMMARY: '1'
           JQUANTS_REFRESH_TOKEN: ${{ secrets.JQUANTS_REFRESH_TOKEN }}
         run: python scripts/update_data.py
 

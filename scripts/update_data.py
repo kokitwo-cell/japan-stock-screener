@@ -546,6 +546,7 @@ def fetch_stock_data(code, name_hint=""):
             "jaName": name_hint,
             "sector": info.get("sector","不明"),
             "industry": info.get("industry",""),
+            "businessSummaryEn": info.get("longBusinessSummary",""),
             "market": info.get("exchange",""),
             "per": round(float(info.get("trailingPE") or 0),1),
             "pbr": round(float(info.get("priceToBook") or 0),1),
@@ -1076,6 +1077,46 @@ def enrich_irbank(cache):
     print(f"✅ ir-bank補完完了: {enriched}/{total}")
 
 
+def enrich_business_summary(cache):
+    """yfinanceの英語事業概要(longBusinessSummary)を取得し、日本語に機械翻訳して補完する"""
+    from deep_translator import GoogleTranslator
+
+    force = os.environ.get("FORCE_SUMMARY") == "1"
+    if force:
+        targets = list(cache.keys())
+    else:
+        targets = [code for code, d in cache.items() if not d.get("businessSummaryJa")]
+    total = len(targets)
+    print(f"事業概要補完: {total}銘柄対象")
+    enriched = 0
+    translator = GoogleTranslator(source="en", target="ja")
+
+    for i, code in enumerate(targets):
+        time.sleep(1.0)
+        try:
+            summary_en = cache[code].get("businessSummaryEn", "")
+            if not summary_en:
+                ticker = yf.Ticker(f"{code}.T")
+                summary_en = ticker.info.get("longBusinessSummary", "") or ""
+                if summary_en:
+                    cache[code]["businessSummaryEn"] = summary_en
+
+            if summary_en:
+                summary_ja = translator.translate(summary_en)
+                if summary_ja:
+                    cache[code]["businessSummaryJa"] = summary_ja
+                    enriched += 1
+        except Exception as e:
+            print(f"  ⚠️ {code}: {e}")
+
+        if (i + 1) % 50 == 0:
+            print(f"  {i+1}/{total} enriched={enriched}")
+            save_cache(cache)
+
+    save_cache(cache)
+    print(f"✅ 事業概要補完完了: {enriched}/{total}")
+
+
 # ============================================================
 def diag_irbank(code):
     """1銘柄のir-bank /results /dividend ページ構造をダンプ（パーサ調整用）"""
@@ -1120,6 +1161,7 @@ def main():
 
     update_only = os.environ.get("UPDATE_PRICES_ONLY") == "1"
     do_irbank = os.environ.get("ENRICH_IRBANK") == "1"
+    do_summary = os.environ.get("ENRICH_SUMMARY") == "1"
     fetch_limit = int(os.environ.get("FETCH_LIMIT") or 0) or None
     diag_code = os.environ.get("DIAG_IRBANK") or ""
 
@@ -1140,6 +1182,11 @@ def main():
         # 配当を更新したあとに株価も最新化（dividendYield を最新株価ベースで再計算）
         print("\n--- 株価も最新化します ---")
         update_prices_only(cache)
+    elif do_summary:
+        if not cache:
+            print("❌ 既存キャッシュなし。先にフルフェッチが必要です")
+            sys.exit(1)
+        enrich_business_summary(cache)
     else:
         codes = load_tse_codes()
         if not codes:
