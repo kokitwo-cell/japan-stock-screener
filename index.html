@@ -477,6 +477,7 @@ header .status-pill.error { color: var(--accent); }
 .modal-close:hover { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .modal-name { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
 .modal-meta { font-family: var(--mono); font-size: 11px; color: var(--ink3); display: flex; gap: 12px; }
+.modal-profile { font-size: 13px; line-height: 1.7; color: var(--ink2); background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
 .modal-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 28px; }
 .modal-metric { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
 .modal-metric-lbl { font-family: var(--mono); font-size: 9px; letter-spacing: 1px; color: var(--ink3); margin-bottom: 4px; }
@@ -1498,6 +1499,103 @@ function navigateModal(dir) {
   }
 }
 
+const SECTOR_JA = {
+  'Technology': 'テクノロジー',
+  'Communication Services': '通信・メディア',
+  'Consumer Cyclical': '一般消費財',
+  'Consumer Defensive': '生活必需品',
+  'Energy': 'エネルギー',
+  'Financial Services': '金融',
+  'Healthcare': 'ヘルスケア',
+  'Industrials': '資本財・サービス',
+  'Basic Materials': '素材',
+  'Real Estate': '不動産',
+  'Utilities': '公益事業',
+  'ETF・他': 'ETF・その他',
+};
+
+const INDUSTRY_JA = {
+  'Advertising Agencies': '広告代理業', 'Aerospace & Defense': '航空宇宙・防衛',
+  'Agricultural Inputs': '農業資材', 'Airlines': '航空', 'Airports & Air Services': '空港・航空サービス',
+  'Aluminum': 'アルミニウム', 'Apparel Manufacturing': 'アパレル製造', 'Apparel Retail': 'アパレル小売',
+  'Asset Management': '資産運用', 'Auto & Truck Dealerships': '自動車・トラック販売',
+  'Auto Manufacturers': '自動車製造', 'Auto Parts': '自動車部品', 'Banks - Diversified': '銀行（総合）',
+  'Banks - Regional': '地方銀行', 'Beverages - Brewers': 'ビール・醸造', 'Beverages - Non-Alcoholic': '飲料（ノンアルコール）',
+  'Beverages - Wineries & Distilleries': '酒類（ワイン・蒸留酒）', 'Biotechnology': 'バイオテクノロジー',
+  'Broadcasting': '放送', 'Building Materials': '建材', 'Building Products & Equipment': '建築資材・設備',
+  'Business Equipment & Supplies': '事務機器・用品', 'Capital Markets': '資本市場',
+  'Chemicals': '化学', 'Coking Coal': '原料炭', 'Communication Equipment': '通信機器',
+  'Computer Hardware': 'コンピューター機器', 'Confectioners': '製菓', 'Conglomerates': 'コングロマリット',
+  'Consulting Services': 'コンサルティング', 'Consumer Electronics': '民生用電子機器', 'Copper': '銅',
+  'Credit Services': '信用サービス', 'Department Stores': '百貨店', 'Diagnostics & Research': '検査・研究',
+  'Discount Stores': 'ディスカウントストア', 'Drug Manufacturers - General': '医薬品製造（総合）',
+  'Drug Manufacturers - Specialty & Generic': '医薬品製造（専門・ジェネリック）', 'ETF': 'ETF',
+  'Education & Training Services': '教育・研修サービス', 'Electrical Equipment & Parts': '電気機器・部品',
+  'Electronic Components': '電子部品', 'Electronic Gaming & Multimedia': 'ゲーム・マルチメディア',
+  'Electronics & Computer Distribution': '電子機器・コンピューター卸売', 'Engineering & Construction': '建設・エンジニアリング',
+  'Entertainment': '娯楽', 'Farm & Heavy Construction Machinery': '農業・建設機械', 'Farm Products': '農産物',
+  'Financial Conglomerates': '金融コングロマリット', 'Financial Data & Stock Exchanges': '金融情報・取引所',
+  'Food Distribution': '食品卸売', 'Footwear & Accessories': '履物・服飾雑貨',
+  'Furnishings, Fixtures & Appliances': '家具・什器・家電', 'Gambling': 'ギャンブル', 'Gold': '金',
+  'Grocery Stores': '食料品店', 'Health Information Services': 'ヘルスケア情報サービス',
+  'Home Improvement Retail': 'ホームセンター', 'Household & Personal Products': '家庭用品・パーソナルケア用品',
+  'Industrial Distribution': '産業用製品卸売', 'Information Technology Services': 'ITサービス',
+  'Infrastructure Operations': 'インフラ運営', 'Insurance - Diversified': '保険（総合）',
+  'Insurance - Life': '生命保険', 'Insurance - Property & Casualty': '損害保険', 'Insurance Brokers': '保険仲介',
+  'Integrated Freight & Logistics': '総合物流', 'Internet Content & Information': 'インターネットコンテンツ・情報',
+  'Internet Retail': 'ネット小売', 'Leisure': 'レジャー', 'Lodging': '宿泊業',
+  'Lumber & Wood Production': '木材製品', 'Luxury Goods': '高級品', 'Marine Shipping': '海運',
+  'Medical Care Facilities': '医療施設', 'Medical Devices': '医療機器', 'Medical Distribution': '医薬品卸売',
+  'Medical Instruments & Supplies': '医療用器具・用品', 'Metal Fabrication': '金属加工',
+  'Mortgage Finance': '住宅ローン金融', 'Oil & Gas E&P': '石油・ガス開発', 'Oil & Gas Equipment & Services': '石油・ガス関連設備・サービス',
+  'Oil & Gas Integrated': '石油・ガス（統合）', 'Oil & Gas Refining & Marketing': '石油精製・販売',
+  'Other Industrial Metals & Mining': 'その他産業用金属・鉱業', 'Other Precious Metals & Mining': 'その他貴金属・鉱業',
+  'Packaged Foods': '加工食品', 'Packaging & Containers': '包装・容器', 'Paper & Paper Products': '紙・紙製品',
+  'Personal Services': '対個人サービス', 'Pharmaceutical Retailers': '医薬品小売',
+  'Pollution & Treatment Controls': '汚染防止・処理', 'Publishing': '出版', 'Railroads': '鉄道',
+  'Real Estate - Development': '不動産開発', 'Real Estate - Diversified': '不動産（総合）',
+  'Real Estate Services': '不動産サービス', 'Recreational Vehicles': 'レクリエーション車両',
+  'Rental & Leasing Services': 'レンタル・リース', 'Residential Construction': '住宅建設',
+  'Resorts & Casinos': 'リゾート・カジノ', 'Restaurants': '外食', 'Scientific & Technical Instruments': '科学・技術機器',
+  'Security & Protection Services': '警備・防犯サービス', 'Semiconductor Equipment & Materials': '半導体製造装置・材料',
+  'Semiconductors': '半導体', 'Software - Application': 'アプリケーションソフトウェア',
+  'Software - Infrastructure': 'インフラソフトウェア', 'Specialty Business Services': '専門ビジネスサービス',
+  'Specialty Chemicals': '特殊化学品', 'Specialty Industrial Machinery': '特殊産業機械',
+  'Specialty Retail': '専門小売', 'Staffing & Employment Services': '人材派遣・職業紹介', 'Steel': '鉄鋼',
+  'Telecom Services': '通信サービス', 'Textile Manufacturing': '繊維製造', 'Thermal Coal': '一般炭', 'Tobacco': 'たばこ',
+  'Tools & Accessories': '工具・アクセサリー', 'Travel Services': '旅行サービス', 'Trucking': 'トラック輸送',
+  'Utilities - Diversified': '公益事業（総合）', 'Utilities - Independent Power Producers': '独立系発電事業者',
+  'Utilities - Regulated Electric': '電力（規制）', 'Utilities - Regulated Gas': 'ガス（規制）',
+  'Utilities - Regulated Water': '水道（規制）', 'Utilities - Renewable': '再生可能エネルギー',
+  'Waste Management': '廃棄物処理',
+};
+
+function describeCompany(s) {
+  const sectorJa = s.s17Name || SECTOR_JA[s.sector] || s.sector || '';
+  const industryJa = INDUSTRY_JA[s.industry] || s.industry || '';
+  const name = s.jaName || s.name;
+
+  let line1 = name + 'は';
+  if (industryJa) line1 += `「${industryJa}」を主力事業とする`;
+  if (sectorJa) line1 += `${sectorJa}分野の企業`;
+  else line1 += '企業';
+  line1 += '。';
+
+  const parts = [];
+  if (s.market) parts.push(`東証${s.market}上場`);
+  if (s.marketCap > 0) {
+    const oku = Math.round(s.marketCap / 1e8);
+    parts.push(`時価総額 約${oku.toLocaleString()}億円`);
+  }
+  const line2 = parts.length ? parts.join('・') + '。' : '';
+
+  const div = s.dividendStreak > 0 ? `${s.dividendStreak}年連続で減配なし` : null;
+  const rev = s.revenueTrend?.growthRate > 0 ? `売上は長期的に拡大基調` : null;
+  const line3 = [div, rev].filter(Boolean).join('、') + (div || rev ? '。' : '');
+
+  return [line1, line2, line3].filter(Boolean).join(' ');
+}
+
 function openModal(code) {
   const s = allResults.find(x => x.code === code) || STOCK_CACHE[code];
   if (!s) return;
@@ -1542,6 +1640,7 @@ function openModal(code) {
   `;
 
   document.getElementById('modalBodyScroll').innerHTML = `
+    <div class="modal-profile">${describeCompany(s)}</div>
     <div class="modal-metrics">
       <div class="modal-metric">
         <div class="modal-metric-lbl">現在株価</div>
