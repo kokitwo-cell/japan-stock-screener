@@ -478,6 +478,11 @@ header .status-pill.error { color: var(--accent); }
 .modal-name { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
 .modal-meta { font-family: var(--mono); font-size: 11px; color: var(--ink3); display: flex; gap: 12px; }
 .modal-profile { font-size: 13px; line-height: 1.7; color: var(--ink2); background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
+.modal-profile-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.modal-profile[open] .modal-profile-text { -webkit-line-clamp: unset; overflow: visible; }
+.modal-profile summary { cursor: pointer; list-style: none; }
+.modal-profile summary::-webkit-details-marker { display: none; }
+.modal-profile-more { font-family: var(--mono); font-size: 10px; color: var(--ink3); margin-top: 4px; }
 .modal-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 28px; }
 .modal-metric { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
 .modal-metric-lbl { font-family: var(--mono); font-size: 9px; letter-spacing: 1px; color: var(--ink3); margin-bottom: 4px; }
@@ -1571,6 +1576,8 @@ const INDUSTRY_JA = {
 };
 
 function describeCompany(s) {
+  if (s.businessSummaryJa) return s.businessSummaryJa;
+
   const sectorJa = s.s17Name || SECTOR_JA[s.sector] || s.sector || '';
   const industryJa = INDUSTRY_JA[s.industry] || s.industry || '';
   const name = s.jaName || s.name;
@@ -1640,7 +1647,12 @@ function openModal(code) {
   `;
 
   document.getElementById('modalBodyScroll').innerHTML = `
-    <div class="modal-profile">${describeCompany(s)}</div>
+    <details class="modal-profile">
+      <summary>
+        <div class="modal-profile-text">${describeCompany(s)}</div>
+        <div class="modal-profile-more">▼ もっと見る${s.businessSummaryJa ? '（Yahoo!ファイナンス提供データを機械翻訳）' : ''}</div>
+      </summary>
+    </details>
     <div class="modal-metrics">
       <div class="modal-metric">
         <div class="modal-metric-lbl">現在株価</div>
