@@ -126,5 +126,13 @@
   "dividendAfterTax": 242720,
   "pricedCount": 25,
   "holdingsCount": 25
+ },
+ {
+  "date": "2026-08-03",
+  "value": 6335900,
+  "cost": 5322250,
+  "dividendAfterTax": 242720,
+  "pricedCount": 25,
+  "holdingsCount": 25
  }
 ]
