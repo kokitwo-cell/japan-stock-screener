@@ -102,15 +102,17 @@ jobs:
           fi
           git commit -m "chore: update stock data ($(date -u +%Y-%m-%d))"
           # 長時間ジョブ中に別run(週次scheduleなど)が先に push しているとnon-fast-forwardで弾かれる。
-          # その場合は origin/main を取り込んで、データファイルは ours (= 今書いたもの)を優先して rebase 再push。
+          # その場合は origin/main を取り込んで、データファイルは自分がいま書いた内容を優先して rebase 再push。
+          # 注意: git rebase では ours/theirs の意味がマージ時と逆転する(ours=リベース先=origin側、
+          # theirs=リベースされる側=自分のコミット)。"今書いたもの"を優先するには theirs を指定する必要がある。
           for attempt in 1 2 3 4 5; do
             if git push; then
               echo "push成功 (attempt=$attempt)"
               exit 0
             fi
-            echo "push reject (attempt=$attempt) → fetch & rebase --strategy-option=ours"
+            echo "push reject (attempt=$attempt) → fetch & rebase --strategy-option=theirs"
             git fetch origin main
-            git rebase --strategy-option=ours origin/main || {
+            git rebase --strategy-option=theirs origin/main || {
               echo "rebase失敗 (attempt=$attempt)"
               git rebase --abort || true
               sleep 5
