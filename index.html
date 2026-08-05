@@ -135,6 +135,39 @@ header .status-pill.error { color: var(--accent); }
 }
 .toggle-switch.on::after { left: 19px; }
 
+.toggle-switch.sm { width: 30px; height: 18px; }
+.toggle-switch.sm::after { width: 12px; height: 12px; top: 3px; left: 3px; }
+.toggle-switch.sm.on::after { left: 15px; }
+
+.mc-master-row { margin-bottom: 2px; }
+.mc-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 2px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+  transition: opacity 0.15s;
+}
+.mc-rules.mc-disabled { opacity: 0.45; }
+.mc-rule { display: flex; flex-direction: column; gap: 4px; }
+.mc-rule-row {
+  padding: 7px 10px;
+}
+.mc-rule-row .toggle-label { font-size: 12px; }
+.mc-rule-inputs { display: flex; align-items: center; gap: 6px; padding: 0 10px; }
+.mc-rule-inputs .inp-sm { flex: 1; min-width: 0; }
+.inp-sm { padding: 6px 8px; font-size: 12px; }
+.mc-unit { font-family: var(--mono); font-size: 10px; color: var(--ink3); white-space: nowrap; }
+.mc-reset-link {
+  cursor: pointer;
+  color: var(--accent3);
+  font-size: 9px;
+  text-decoration: underline;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .input-wrap { display: flex; flex-direction: column; gap: 5px; }
 .input-label { font-family: var(--mono); font-size: 10px; color: var(--ink3); letter-spacing: 1px; }
 .inp {
@@ -856,9 +889,165 @@ header .status-pill.error { color: var(--accent); }
       </div>
     </div>
 
+    <div class="filter-section">
+      <div class="filter-section-title" style="display:flex; justify-content:space-between; align-items:center;">
+        <span>🎯 マイ基準</span>
+        <span class="mc-reset-link" onclick="resetMyCriteria()" title="全項目を初期値に戻す">初期値に戻す</span>
+      </div>
+
+      <div class="toggle-row mc-master-row" id="toggleMyCriteria" onclick="toggleMyCriteriaMaster()">
+        <span class="toggle-label">マイ基準で絞り込む</span>
+        <div class="toggle-switch" id="swMyCriteria"></div>
+      </div>
+
+      <div class="mc-rules" id="mcRules">
+
+        <div class="mc-rule">
+          <div class="toggle-row mc-rule-row" id="mcRow_revR2" onclick="toggleMcRule('revR2')">
+            <span class="toggle-label">売上高トレンド 右肩上がり（R²）</span>
+            <div class="toggle-switch sm" id="mcSw_revR2"></div>
+          </div>
+          <div class="mc-rule-inputs">
+            <input class="inp inp-sm" type="number" id="mcVal_revR2" min="0" max="1" step="0.05" onclick="event.stopPropagation()" oninput="setMcValue('revR2', this.value)">
+            <span class="mc-unit">以上</span>
+          </div>
+        </div>
+
+        <div class="mc-rule">
+          <div class="toggle-row mc-rule-row" id="mcRow_profR2" onclick="toggleMcRule('profR2')">
+            <span class="toggle-label">営業利益トレンド 右肩上がり（R²）</span>
+            <div class="toggle-switch sm" id="mcSw_profR2"></div>
+          </div>
+          <div class="mc-rule-inputs">
+            <input class="inp inp-sm" type="number" id="mcVal_profR2" min="0" max="1" step="0.05" onclick="event.stopPropagation()" oninput="setMcValue('profR2', this.value)">
+            <span class="mc-unit">以上</span>
+          </div>
+        </div>
+
+        <div class="mc-rule">
+          <div class="toggle-row mc-rule-row" id="mcRow_epsR2" onclick="toggleMcRule('epsR2')">
+            <span class="toggle-label">EPSトレンド 右肩上がり（R²）</span>
+            <div class="toggle-switch sm" id="mcSw_epsR2"></div>
+          </div>
+          <div class="mc-rule-inputs">
+            <input class="inp inp-sm" type="number" id="mcVal_epsR2" min="0" max="1" step="0.05" onclick="event.stopPropagation()" oninput="setMcValue('epsR2', this.value)">
+            <span class="mc-unit">以上</span>
+          </div>
+        </div>
+
+        <div class="mc-rule">
+          <div class="toggle-row mc-rule-row" id="mcRow_noCutEver" onclick="toggleMcRule('noCutEver')">
+            <span class="toggle-label">過去に一度も減配なし</span>
+            <div class="toggle-switch sm" id="mcSw_noCutEver"></div>
+          </div>
+        </div>
+
+        <div class="mc-rule">
+          <div class="toggle-row mc-rule-row" id="mcRow_noCutRecent" onclick="toggleMcRule('noCutRecent')">
+            <span class="toggle-label">直近N年以内に減配なし</span>
+            <div class="toggle-switch sm" id="mcSw_noCutRecent"></div>
+          </div>
+          <div class="mc-rule-inputs">
+            <input class="inp inp-sm" type="number" id="mcVal_noCutRecent" min="1" max="10" step="1" onclick="event.stopPropagation()" oninput="setMcValue('noCutRecent', this.value)">
+            <span class="mc-unit">年以内</span>
+          </div>
+        </div>
+
+        <div class="mc-rule">
+          <div class="toggle-row mc-rule-row" id="mcRow_streak" onclick="toggleMcRule('streak')">
+            <span class="toggle-label">連続維持・増配年数</span>
+            <div class="toggle-switch sm" id="mcSw_streak"></div>
+          </div>
+          <div class="mc-rule-inputs">
+            <input class="inp inp-sm" type="number" id="mcVal_streak" min="0" max="9" step="1" onclick="event.stopPropagation()" oninput="setMcValue('streak', this.value)">
+            <span class="mc-unit">年以上</span>
+          </div>
+        </div>
+
+        <div class="mc-rule">
+          <div class="toggle-row mc-rule-row" id="mcRow_divYears" onclick="toggleMcRule('divYears')">
+            <span class="toggle-label">配当実績年数</span>
+            <div class="toggle-switch sm" id="mcSw_divYears"></div>
+          </div>
+          <div class="mc-rule-inputs">
+            <input class="inp inp-sm" type="number" id="mcVal_divYears" min="1" max="20" step="1" onclick="event.stopPropagation()" oninput="setMcValue('divYears', this.value)">
+            <span class="mc-unit">年以上</span>
+          </div>
+        </div>
+
+        <div class="mc-rule">
+          <div class="toggle-row mc-rule-row" id="mcRow_yieldMin" onclick="toggleMcRule('yieldMin')">
+            <span class="toggle-label">配当利回り 下限</span>
+            <div class="toggle-switch sm" id="mcSw_yieldMin"></div>
+          </div>
+          <div class="mc-rule-inputs">
+            <input class="inp inp-sm" type="number" id="mcVal_yieldMin" min="0" step="0.1" onclick="event.stopPropagation()" oninput="setMcValue('yieldMin', this.value)">
+            <span class="mc-unit">%以上</span>
+          </div>
+        </div>
+
+        <div class="mc-rule">
+          <div class="toggle-row mc-rule-row" id="mcRow_yieldMax" onclick="toggleMcRule('yieldMax')">
+            <span class="toggle-label">配当利回り 上限</span>
+            <div class="toggle-switch sm" id="mcSw_yieldMax"></div>
+          </div>
+          <div class="mc-rule-inputs">
+            <input class="inp inp-sm" type="number" id="mcVal_yieldMax" min="0" step="0.1" onclick="event.stopPropagation()" oninput="setMcValue('yieldMax', this.value)">
+            <span class="mc-unit">%以下</span>
+          </div>
+        </div>
+
+        <div class="mc-rule">
+          <div class="toggle-row mc-rule-row" id="mcRow_payout" onclick="toggleMcRule('payout')">
+            <span class="toggle-label">配当性向 上限</span>
+            <div class="toggle-switch sm" id="mcSw_payout"></div>
+          </div>
+          <div class="mc-rule-inputs">
+            <input class="inp inp-sm" type="number" id="mcVal_payout" min="0" max="200" step="1" onclick="event.stopPropagation()" oninput="setMcValue('payout', this.value)">
+            <span class="mc-unit">%以下</span>
+          </div>
+        </div>
+
+        <div class="mc-rule">
+          <div class="toggle-row mc-rule-row" id="mcRow_per" onclick="toggleMcRule('per')">
+            <span class="toggle-label">PER 上限</span>
+            <div class="toggle-switch sm" id="mcSw_per"></div>
+          </div>
+          <div class="mc-rule-inputs">
+            <input class="inp inp-sm" type="number" id="mcVal_per" min="1" step="0.5" onclick="event.stopPropagation()" oninput="setMcValue('per', this.value)">
+            <span class="mc-unit">倍以下</span>
+          </div>
+        </div>
+
+        <div class="mc-rule">
+          <div class="toggle-row mc-rule-row" id="mcRow_pbr" onclick="toggleMcRule('pbr')">
+            <span class="toggle-label">PBR 上限</span>
+            <div class="toggle-switch sm" id="mcSw_pbr"></div>
+          </div>
+          <div class="mc-rule-inputs">
+            <input class="inp inp-sm" type="number" id="mcVal_pbr" min="0.1" step="0.1" onclick="event.stopPropagation()" oninput="setMcValue('pbr', this.value)">
+            <span class="mc-unit">倍以下</span>
+          </div>
+        </div>
+
+        <div class="mc-rule">
+          <div class="toggle-row mc-rule-row" id="mcRow_mcap" onclick="toggleMcRule('mcap')">
+            <span class="toggle-label">時価総額 下限</span>
+            <div class="toggle-switch sm" id="mcSw_mcap"></div>
+          </div>
+          <div class="mc-rule-inputs">
+            <input class="inp inp-sm" type="number" id="mcVal_mcap" min="0" step="10" onclick="event.stopPropagation()" oninput="setMcValue('mcap', this.value)">
+            <span class="mc-unit">億円以上</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
     <div class="note-box">
       📋 銘柄リストはJPX公式CSV由来。<br>
-      ★お気に入りはこのブラウザに保存されます。
+      ★お気に入りはこのブラウザに保存されます。<br>
+      🎯 マイ基準の設定もこのブラウザに保存されます。
     </div>
   </aside>
 
@@ -870,6 +1059,14 @@ header .status-pill.error { color: var(--accent); }
       </div>
 
       <div style="display:flex; align-items:center; gap:20px;">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span style="color:var(--ink3); font-family:var(--mono); font-size:11px;">コード検索:</span>
+          <input class="inp" id="codeSearchInput" type="text" placeholder="例: 7203" maxlength="4"
+                 style="width:90px; padding:6px 10px; font-size:12px;"
+                 onkeydown="if(event.key==='Enter') searchByCode()">
+          <button class="sort-btn" onclick="searchByCode()" title="コードで直接表示">検索</button>
+        </div>
+
         <div style="display:flex; align-items:center; gap:8px;">
           <span style="color:var(--ink3); font-family:var(--mono); font-size:11px;">業種絞り込み:</span>
           <select class="filter-select" id="s33Filter" onchange="applyFilters()">
@@ -1121,6 +1318,44 @@ let showWatchlistOnly = false;
 const miniCharts = {};
 const modalCharts = {};
 
+// マイ基準：既存のスクリーニング条件とは独立した追加の絞り込み。
+// お気に入り登録済み銘柄の傾向から導いた初期値。各項目は個別にオンオフ・数値変更でき、
+// マスタートグルがオンの間だけ screenStocks() の結果にAND条件で適用される。
+const MY_CRITERIA_DEFAULTS = {
+  enabled: false,
+  rules: {
+    revR2:       { on: true, value: 0.85 },
+    profR2:      { on: true, value: 0.85 },
+    epsR2:       { on: true, value: 0.70 },
+    noCutEver:   { on: true },
+    noCutRecent: { on: true, value: 3 },
+    streak:      { on: true, value: 5 },
+    divYears:    { on: true, value: 8 },
+    yieldMin:    { on: true, value: 1.0 },
+    yieldMax:    { on: true, value: 5.0 },
+    payout:      { on: true, value: 55 },
+    per:         { on: true, value: 22 },
+    pbr:         { on: true, value: 4 },
+    mcap:        { on: true, value: 150 },
+  },
+};
+
+function loadMyCriteria() {
+  const merged = JSON.parse(JSON.stringify(MY_CRITERIA_DEFAULTS));
+  try {
+    const saved = JSON.parse(localStorage.getItem('myCriteria') || 'null');
+    if (saved) {
+      merged.enabled = !!saved.enabled;
+      for (const key in merged.rules) {
+        if (saved.rules && saved.rules[key]) Object.assign(merged.rules[key], saved.rules[key]);
+      }
+    }
+  } catch (e) { console.warn('マイ基準の読み込みに失敗しました。初期値を使用します。', e); }
+  return merged;
+}
+let myCriteria = loadMyCriteria();
+function saveMyCriteria() { localStorage.setItem('myCriteria', JSON.stringify(myCriteria)); }
+
 function toggleFilter(key) {
   filters[key] = !filters[key];
   const map = {
@@ -1156,6 +1391,26 @@ function toggleWatchlistFilter() {
   document.getElementById('toggleWatchlistBtn').classList.toggle('active', showWatchlistOnly);
   document.getElementById('swWatchlist').classList.toggle('on', showWatchlistOnly);
   applyFilters();
+}
+
+// スクリーニング条件とは無関係に、コードを指定した銘柄を直接モーダルで開く
+function searchByCode() {
+  const input = document.getElementById('codeSearchInput');
+  const code = input.value.trim();
+  if (!code) return;
+
+  if (!STOCK_CACHE || !Object.keys(STOCK_CACHE).length) {
+    alert('データ未読み込みです。読み込み完了後にお試しください。');
+    return;
+  }
+
+  const data = STOCK_CACHE[code];
+  if (!data) {
+    alert(`コード「${code}」の銘柄データが見つかりませんでした。`);
+    return;
+  }
+
+  openModal(code);
 }
 
 function setSort(key) {
@@ -1269,11 +1524,114 @@ function screenStocks(cache, p) {
       if (streak < parseInt(p.minDividendStreak)) continue;
     }
 
+    if (myCriteria.enabled && !passesMyCriteria(data)) continue;
+
     results.push(data);
   }
 
   results.sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0));
   return results;
+}
+
+// 直近の配当実績から配当性向（%）を算出。対応するEPSが取れる直近年度を遡って探す。
+function payoutRatio(data) {
+  const dv = data.dividend || [];
+  const dy = data.dividendYears || [];
+  const ey = data.epsYears || [];
+  const ev = data.epsValues || [];
+  for (let i = dy.length - 1; i >= 0; i--) {
+    const idx = ey.indexOf(dy[i]);
+    if (idx >= 0 && ev[idx] > 0) return dv[i] / ev[idx] * 100;
+  }
+  return null;
+}
+
+// 直近n年間で前年比減配となった年を返す
+function recentDividendCutYears(data, n) {
+  const dv = data.dividend || [];
+  const dy = data.dividendYears || [];
+  const cuts = [];
+  for (let i = Math.max(1, dv.length - n); i < dv.length; i++) {
+    if (dv[i] < dv[i - 1]) cuts.push(dy[i]);
+  }
+  return cuts;
+}
+
+// マイ基準（オンになっている項目のみAND判定）を満たすか判定
+function passesMyCriteria(data) {
+  const r = myCriteria.rules;
+  const rt = data.revenueTrend || {};
+  const pt = data.profitTrend || {};
+  const et = data.epsTrend || {};
+
+  if (r.revR2.on && !((rt.slope || 0) > 0 && (rt.r2 || 0) >= parseFloat(r.revR2.value))) return false;
+  if (r.profR2.on && !((pt.slope || 0) > 0 && (pt.r2 || 0) >= parseFloat(r.profR2.value))) return false;
+  if (r.epsR2.on && !((et.slope || 0) > 0 && (et.r2 || 0) >= parseFloat(r.epsR2.value))) return false;
+  if (r.noCutEver.on && data.noDividendCut === false) return false;
+  if (r.noCutRecent.on && recentDividendCutYears(data, parseInt(r.noCutRecent.value)).length > 0) return false;
+  if (r.streak.on && (data.dividendStreak || 0) < parseFloat(r.streak.value)) return false;
+  if (r.divYears.on && (data.dividendYears || []).length < parseFloat(r.divYears.value)) return false;
+
+  if (r.yieldMin.on || r.yieldMax.on) {
+    const yld = data.dividendYield || 0;
+    if (r.yieldMin.on && yld < parseFloat(r.yieldMin.value)) return false;
+    if (r.yieldMax.on && yld > parseFloat(r.yieldMax.value)) return false;
+  }
+  if (r.payout.on) {
+    const po = payoutRatio(data);
+    if (po === null || po > parseFloat(r.payout.value)) return false;
+  }
+  if (r.per.on && !((data.per || 0) > 0 && data.per <= parseFloat(r.per.value))) return false;
+  if (r.pbr.on && !((data.pbr || 0) > 0 && data.pbr <= parseFloat(r.pbr.value))) return false;
+  if (r.mcap.on && ((data.marketCap || 0) / 1e8) < parseFloat(r.mcap.value)) return false;
+
+  return true;
+}
+
+function toggleMyCriteriaMaster() {
+  myCriteria.enabled = !myCriteria.enabled;
+  saveMyCriteria();
+  renderMyCriteriaUI();
+}
+
+function toggleMcRule(key) {
+  myCriteria.rules[key].on = !myCriteria.rules[key].on;
+  saveMyCriteria();
+  renderMyCriteriaUI();
+}
+
+function setMcValue(key, val) {
+  myCriteria.rules[key].value = val;
+  saveMyCriteria();
+}
+
+function resetMyCriteria() {
+  myCriteria = JSON.parse(JSON.stringify(MY_CRITERIA_DEFAULTS));
+  saveMyCriteria();
+  renderMyCriteriaUI();
+}
+
+function renderMyCriteriaUI() {
+  const master = document.getElementById('toggleMyCriteria');
+  const masterSw = document.getElementById('swMyCriteria');
+  const rulesWrap = document.getElementById('mcRules');
+  if (!master || !masterSw || !rulesWrap) return;
+
+  master.classList.toggle('active', myCriteria.enabled);
+  masterSw.classList.toggle('on', myCriteria.enabled);
+  rulesWrap.classList.toggle('mc-disabled', !myCriteria.enabled);
+
+  for (const key in myCriteria.rules) {
+    const rule = myCriteria.rules[key];
+    const row = document.getElementById('mcRow_' + key);
+    const sw = document.getElementById('mcSw_' + key);
+    if (row) row.classList.toggle('active', rule.on);
+    if (sw) sw.classList.toggle('on', rule.on);
+    if ('value' in rule) {
+      const inp = document.getElementById('mcVal_' + key);
+      if (inp && document.activeElement !== inp) inp.value = rule.value;
+    }
+  }
 }
 
 function applyFilters() {
@@ -2655,6 +3013,7 @@ function clearSimulation() {
 }
 
 window.addEventListener('load', async () => {
+  renderMyCriteriaUI();
   await loadStaticData();
   await loadPortfolio();
 });
