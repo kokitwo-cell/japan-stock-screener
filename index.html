@@ -969,14 +969,14 @@ header .status-pill.error { color: var(--accent); }
         </div>
 
         <div class="mc-rule">
-          <div class="toggle-row mc-rule-row" id="mcRow_noCutEver" onclick="toggleMcRule('noCutEver')">
+          <div class="toggle-row mc-rule-row" id="mcRow_noCutEver" onclick="toggleMcRule('noCutEver')" title="上部「DIVIDEND SUSTAINABILITY」の「減配なし」がONの間は、そちらが常に優先されるためこの項目のON/OFFは結果に影響しません。試すには上の「減配なし」もOFFにしてください。">
             <span class="toggle-label">過去に一度も減配なし</span>
             <div class="toggle-switch sm" id="mcSw_noCutEver"></div>
           </div>
         </div>
 
         <div class="mc-rule">
-          <div class="toggle-row mc-rule-row" id="mcRow_noCutRecent" onclick="toggleMcRule('noCutRecent')">
+          <div class="toggle-row mc-rule-row" id="mcRow_noCutRecent" onclick="toggleMcRule('noCutRecent')" title="上部「DIVIDEND SUSTAINABILITY」の「減配なし」がONの間は、過去に一度でも減配した銘柄が母集団からすべて除外されているため、この項目のON/OFFは結果に影響しません。試すには上の「減配なし」もOFFにしてください。">
             <span class="toggle-label">直近N年以内に減配なし</span>
             <div class="toggle-switch sm" id="mcSw_noCutRecent"></div>
           </div>
@@ -1090,6 +1090,7 @@ header .status-pill.error { color: var(--accent); }
 
     <div class="filter-section">
       <div class="filter-section-title">🔗 設定を共有</div>
+      <div class="note-box" id="userSettingsWarning" style="display:none; margin:0; background:#fdecea; border-color:#f0c8be; color:var(--accent);"></div>
       <div class="note-box" style="margin:0;">
         💾 ★お気に入り・🎯マイ基準・📝メモの変更はこのブラウザ（localStorage）に保存されます。<br>
         ブラウザのキャッシュ削除で消えるため、変更したら「デフォルトとして保存」で
@@ -1433,17 +1434,45 @@ function saveMyCriteria() { localStorage.setItem('myCriteria', JSON.stringify(my
 
 // お気に入り・マイ基準・メモの「共有デフォルト」を data/user_settings.json から読み込む。
 // data/portfolio.json と同じ方式：このブラウザでの変更（localStorage）があればそちらを優先する。
+// 共有デフォルトの取得に失敗した場合にtrueになる。空データでの上書き事故を防ぐガードに使う。
+let userSettingsLoadFailed = false;
+
+async function fetchUserSettingsJSON() {
+  const resp = await fetch(`data/user_settings.json?v=${Date.now()}`);
+  if (!resp.ok) throw new Error(`user_settings.json: HTTP ${resp.status}`);
+  return resp.json();
+}
+
 async function loadUserSettings() {
+  let json = null;
   try {
-    const resp = await fetch(`data/user_settings.json?v=${Date.now()}`);
-    if (!resp.ok) throw new Error(`user_settings.json: HTTP ${resp.status}`);
-    const json = await resp.json();
+    json = await fetchUserSettingsJSON();
+  } catch (e) {
+    console.error('共有設定の読み込みに失敗しました。リトライします。', e);
+    await new Promise(r => setTimeout(r, 800));
+    try {
+      json = await fetchUserSettingsJSON();
+    } catch (e2) {
+      console.error('共有設定の読み込みに再度失敗しました。', e2);
+    }
+  }
+
+  if (json) {
     DEFAULT_WATCHLIST = json.watchlist || [];
     DEFAULT_MY_CRITERIA = json.myCriteria || null;
     DEFAULT_STOCK_NOTES = json.stockNotes || {};
     USER_SETTINGS_SOURCE = json.source || '';
-  } catch (e) {
-    console.error(e);
+    userSettingsLoadFailed = false;
+  } else {
+    // 取得に失敗した場合、空データにフォールバックすると「デフォルトとして保存」で
+    // 共有デフォルトを空データで上書きしてしまう恐れがある。読み込み失敗を明示し、
+    // このセッションでは保存系の操作をブロックする。
+    userSettingsLoadFailed = true;
+    const box = document.getElementById('userSettingsWarning');
+    if (box) {
+      box.style.display = 'block';
+      box.textContent = '⚠ 共有設定（お気に入り・マイ基準・メモ）の読み込みに失敗しました。ネットワークまたはGitHub Pagesの一時的な問題の可能性があります。ページを再読み込みしてください。この状態のまま「デフォルトとして保存」を行うと共有データが失われるため、読み込みが成功するまで保存操作はブロックされます。';
+    }
   }
 
   const savedWatchlist = localStorage.getItem('watchlist');
@@ -1469,6 +1498,13 @@ function userSettingsJSON() {
 // 貼り付けてCommitすればそれが新しい共有デフォルトになり、他のブラウザ・端末にも反映される。
 const USER_SETTINGS_GITHUB_EDIT_URL = 'https://github.com/kokitwo-cell/japan-stock-screener/edit/main/data/user_settings.json';
 function saveAsDefaultUserSettings(el) {
+  if (userSettingsLoadFailed) {
+    alert('共有デフォルトの読み込みに失敗した状態です。このまま保存すると他の端末のお気に入り・マイ基準・メモが失われる恐れがあるため、保存できません。ページを再読み込みしてから、もう一度お試しください。');
+    return;
+  }
+  if (watchlist.length === 0) {
+    if (!confirm('現在お気に入りが0件です。このまま「デフォルトとして保存」を行うと、共有デフォルトのお気に入りも0件になり、他のブラウザ・端末のお気に入りが消えてしまいます。\n\n本当に保存しますか？')) return;
+  }
   const json = userSettingsJSON();
   const openEditor = () => {
     alert('現在のお気に入り・マイ基準・メモをコピーしました。\n\nこのあと開くGitHubの編集画面で、\n1. 中身をすべて選択（Ctrl/Cmd+A）して貼り付け\n2. 右上の「Commit changes...」で保存\nしてください。他のブラウザ・端末でも次回アクセス時から反映されます。');
