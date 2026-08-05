@@ -1091,6 +1091,10 @@ header .status-pill.error { color: var(--accent); }
     <div class="filter-section">
       <div class="filter-section-title">🔗 設定を共有</div>
       <div class="note-box" id="userSettingsWarning" style="display:none; margin:0; background:#fdecea; border-color:#f0c8be; color:var(--accent);"></div>
+      <div class="note-box" id="userSettingsLocalOverrideHint" style="display:none; margin:0;">
+        ℹ️ このブラウザには「★お気に入り0件」というローカルの記録があり、共有デフォルト（<span id="hintDefaultCount">0</span>件登録あり）より優先されています。<br>
+        共有デフォルトを読み込むには、下の「↺ デフォルトに戻す」を押してください。
+      </div>
       <div class="note-box" style="margin:0;">
         💾 ★お気に入り・🎯マイ基準・📝メモの変更はこのブラウザ（localStorage）に保存されます。<br>
         ブラウザのキャッシュ削除で消えるため、変更したら「デフォルトとして保存」で
@@ -1478,6 +1482,18 @@ async function loadUserSettings() {
   const savedWatchlist = localStorage.getItem('watchlist');
   watchlist = savedWatchlist ? JSON.parse(savedWatchlist) : JSON.parse(JSON.stringify(DEFAULT_WATCHLIST));
 
+  // このブラウザに「空のお気に入り」が明示的に保存されていると、共有デフォルトに
+  // 何件登録されていても localStorage側が優先されて常に0件表示になる（portfolio.jsonと
+  // 同じ「ローカル変更が共有デフォルトより優先」という設計のため）。過去に誤って★を
+  // 付け外ししただけ、といったケースで気づきにくいので、その状態を検知して案内する。
+  const localOverrideEmpty = savedWatchlist !== null && watchlist.length === 0 && DEFAULT_WATCHLIST.length > 0;
+  const hintBox = document.getElementById('userSettingsLocalOverrideHint');
+  if (hintBox) {
+    hintBox.style.display = localOverrideEmpty ? 'block' : 'none';
+    const countEl = document.getElementById('hintDefaultCount');
+    if (countEl) countEl.textContent = DEFAULT_WATCHLIST.length;
+  }
+
   const savedNotes = localStorage.getItem('stockNotes');
   stockNotes = savedNotes ? JSON.parse(savedNotes) : JSON.parse(JSON.stringify(DEFAULT_STOCK_NOTES));
 
@@ -1547,6 +1563,8 @@ function resetUserSettings() {
   watchlist = JSON.parse(JSON.stringify(DEFAULT_WATCHLIST));
   stockNotes = JSON.parse(JSON.stringify(DEFAULT_STOCK_NOTES));
   myCriteria = loadMyCriteria(DEFAULT_MY_CRITERIA || MY_CRITERIA_DEFAULTS);
+  const hintBox = document.getElementById('userSettingsLocalOverrideHint');
+  if (hintBox) hintBox.style.display = 'none';
   renderMyCriteriaUI();
   if (allResults.length) applyFilters();
 }
@@ -1572,6 +1590,10 @@ function toggleWatchlist(e, code) {
     watchlist.push(code);
   }
   localStorage.setItem('watchlist', JSON.stringify(watchlist));
+  if (watchlist.length > 0) {
+    const hintBox = document.getElementById('userSettingsLocalOverrideHint');
+    if (hintBox) hintBox.style.display = 'none';
+  }
 
   const mStar = document.getElementById('modalStar');
   if (mStar && mStar.dataset.code === code) {
