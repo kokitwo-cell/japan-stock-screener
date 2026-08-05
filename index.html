@@ -1088,10 +1088,23 @@ header .status-pill.error { color: var(--accent); }
       </div>
     </div>
 
+    <div class="filter-section">
+      <div class="filter-section-title">🔗 設定を共有</div>
+      <div class="note-box" style="margin:0;">
+        💾 ★お気に入り・🎯マイ基準・📝メモの変更はこのブラウザ（localStorage）に保存されます。<br>
+        ブラウザのキャッシュ削除で消えるため、変更したら「デフォルトとして保存」で
+        GitHub上のデフォルト（data/user_settings.json）に反映しておくと、他のブラウザ・端末でも同じ内容を見られます。
+      </div>
+      <button class="sort-btn" onclick="saveAsDefaultUserSettings(this)" title="現在のお気に入り・マイ基準・メモをコピーしてGitHubのdata/user_settings.json編集画面を開きます。貼り付けてCommitすれば共有デフォルトになります" style="padding:8px; font-weight:600;">☁ デフォルトとして保存（GitHubへ）</button>
+      <div style="display:flex; gap:6px;">
+        <button class="sort-btn" style="flex:1;" onclick="exportUserSettings(this)" title="現在の設定をuser_settings.json形式でコピー">⧉ 設定をコピー</button>
+        <button class="sort-btn" style="flex:1;" onclick="downloadUserSettings()" title="user_settings.jsonをダウンロード">↓ JSON保存</button>
+      </div>
+      <button class="sort-btn" onclick="resetUserSettings()" title="デフォルト（data/user_settings.json）の内容に戻す">↺ デフォルトに戻す</button>
+    </div>
+
     <div class="note-box">
-      📋 銘柄リストはJPX公式CSV由来。<br>
-      ★お気に入りはこのブラウザに保存されます。<br>
-      🎯 マイ基準の設定もこのブラウザに保存されます。
+      📋 銘柄リストはJPX公式CSV由来。
     </div>
   </aside>
 
@@ -1361,8 +1374,15 @@ let pendingWatchlistRefresh = false;
 let sortKey = 'dividendYield';
 
 let viewMode = 'list';
-let watchlist = JSON.parse(localStorage.getItem('watchlist') || '[]');
-let stockNotes = JSON.parse(localStorage.getItem('stockNotes') || '{}');
+// お気に入り・マイ基準・メモは、リポジトリの data/user_settings.json を「共有デフォルト」として
+// 読み込み、このブラウザで変更があれば localStorage が優先される（data/portfolio.json と同じ方式）。
+// loadUserSettings() が解決するまでの暫定値として空データで初期化しておく。
+let DEFAULT_WATCHLIST = [];
+let DEFAULT_MY_CRITERIA = null;
+let DEFAULT_STOCK_NOTES = {};
+let USER_SETTINGS_SOURCE = '';
+let watchlist = [];
+let stockNotes = {};
 let noteStatusTimer = null;
 // メモを編集した場合、モーダルを閉じたタイミングでリスト側の📝バッジ表示を更新する
 let noteEdited = false;
@@ -1394,8 +1414,9 @@ const MY_CRITERIA_DEFAULTS = {
   },
 };
 
-function loadMyCriteria() {
-  const merged = JSON.parse(JSON.stringify(MY_CRITERIA_DEFAULTS));
+// base: 共有デフォルト（data/user_settings.json）があればそれを、なければハードコードの初期値を使う
+function loadMyCriteria(base) {
+  const merged = JSON.parse(JSON.stringify(base || MY_CRITERIA_DEFAULTS));
   try {
     const saved = JSON.parse(localStorage.getItem('myCriteria') || 'null');
     if (saved) {
@@ -1407,8 +1428,92 @@ function loadMyCriteria() {
   } catch (e) { console.warn('マイ基準の読み込みに失敗しました。初期値を使用します。', e); }
   return merged;
 }
-let myCriteria = loadMyCriteria();
+let myCriteria = loadMyCriteria(MY_CRITERIA_DEFAULTS);
 function saveMyCriteria() { localStorage.setItem('myCriteria', JSON.stringify(myCriteria)); }
+
+// お気に入り・マイ基準・メモの「共有デフォルト」を data/user_settings.json から読み込む。
+// data/portfolio.json と同じ方式：このブラウザでの変更（localStorage）があればそちらを優先する。
+async function loadUserSettings() {
+  try {
+    const resp = await fetch(`data/user_settings.json?v=${Date.now()}`);
+    if (!resp.ok) throw new Error(`user_settings.json: HTTP ${resp.status}`);
+    const json = await resp.json();
+    DEFAULT_WATCHLIST = json.watchlist || [];
+    DEFAULT_MY_CRITERIA = json.myCriteria || null;
+    DEFAULT_STOCK_NOTES = json.stockNotes || {};
+    USER_SETTINGS_SOURCE = json.source || '';
+  } catch (e) {
+    console.error(e);
+  }
+
+  const savedWatchlist = localStorage.getItem('watchlist');
+  watchlist = savedWatchlist ? JSON.parse(savedWatchlist) : JSON.parse(JSON.stringify(DEFAULT_WATCHLIST));
+
+  const savedNotes = localStorage.getItem('stockNotes');
+  stockNotes = savedNotes ? JSON.parse(savedNotes) : JSON.parse(JSON.stringify(DEFAULT_STOCK_NOTES));
+
+  myCriteria = loadMyCriteria(DEFAULT_MY_CRITERIA || MY_CRITERIA_DEFAULTS);
+}
+
+// 現在のお気に入り・マイ基準・メモを data/user_settings.json 形式の文字列に整形
+function userSettingsJSON() {
+  return JSON.stringify({
+    source: `${USER_SETTINGS_SOURCE || '個人設定エクスポート'}（${new Date().toISOString().slice(0, 10)} エクスポート）`,
+    watchlist: [...watchlist].sort(),
+    myCriteria,
+    stockNotes,
+  }, null, 2) + '\n';
+}
+
+// 現在の設定をクリップボードにコピーし、GitHubのuser_settings.json編集画面を開く。
+// 貼り付けてCommitすればそれが新しい共有デフォルトになり、他のブラウザ・端末にも反映される。
+const USER_SETTINGS_GITHUB_EDIT_URL = 'https://github.com/kokitwo-cell/japan-stock-screener/edit/main/data/user_settings.json';
+function saveAsDefaultUserSettings(el) {
+  const json = userSettingsJSON();
+  const openEditor = () => {
+    alert('現在のお気に入り・マイ基準・メモをコピーしました。\n\nこのあと開くGitHubの編集画面で、\n1. 中身をすべて選択（Ctrl/Cmd+A）して貼り付け\n2. 右上の「Commit changes...」で保存\nしてください。他のブラウザ・端末でも次回アクセス時から反映されます。');
+    window.open(USER_SETTINGS_GITHUB_EDIT_URL, '_blank');
+  };
+  navigator.clipboard.writeText(json).then(() => {
+    const orig = el.textContent;
+    el.textContent = '✅ コピーしました';
+    setTimeout(() => { el.textContent = orig; }, 1800);
+    openEditor();
+  }).catch(() => {
+    alert('クリップボードにコピーできませんでした。「⧉ 設定をコピー」または「↓ JSON保存」の内容を data/user_settings.json に貼り付けてください。');
+    window.open(USER_SETTINGS_GITHUB_EDIT_URL, '_blank');
+  });
+}
+
+function exportUserSettings(el) {
+  navigator.clipboard.writeText(userSettingsJSON()).then(() => {
+    const orig = el.textContent;
+    el.textContent = '✅ コピーしました';
+    setTimeout(() => { el.textContent = orig; }, 1800);
+  }).catch(() => {
+    alert('クリップボードにコピーできませんでした。「↓ JSON保存」からダウンロードしてください。');
+  });
+}
+
+function downloadUserSettings() {
+  const blob = new Blob([userSettingsJSON()], { type: 'application/json;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'user_settings.json';
+  a.click(); URL.revokeObjectURL(url);
+}
+
+function resetUserSettings() {
+  if (!confirm('お気に入り・マイ基準・メモをデフォルト（data/user_settings.json）の内容に戻しますか？\nこのブラウザでの変更はすべて破棄されます。')) return;
+  localStorage.removeItem('watchlist');
+  localStorage.removeItem('myCriteria');
+  localStorage.removeItem('stockNotes');
+  watchlist = JSON.parse(JSON.stringify(DEFAULT_WATCHLIST));
+  stockNotes = JSON.parse(JSON.stringify(DEFAULT_STOCK_NOTES));
+  myCriteria = loadMyCriteria(DEFAULT_MY_CRITERIA || MY_CRITERIA_DEFAULTS);
+  renderMyCriteriaUI();
+  if (allResults.length) applyFilters();
+}
 
 function toggleFilter(key) {
   filters[key] = !filters[key];
@@ -1752,7 +1857,7 @@ function setMcValue(key, val) {
 }
 
 function resetMyCriteria() {
-  myCriteria = JSON.parse(JSON.stringify(MY_CRITERIA_DEFAULTS));
+  myCriteria = JSON.parse(JSON.stringify(DEFAULT_MY_CRITERIA || MY_CRITERIA_DEFAULTS));
   saveMyCriteria();
   renderMyCriteriaUI();
 }
@@ -3182,6 +3287,7 @@ function clearSimulation() {
 }
 
 window.addEventListener('load', async () => {
+  await loadUserSettings();
   renderMyCriteriaUI();
   await loadStaticData();
   await loadPortfolio();
