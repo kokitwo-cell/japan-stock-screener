@@ -1108,6 +1108,9 @@ const filters = {
 };
 let allResults = [];
 let currentDisplayList = [];
+// スクリーナーで最後に描画した（＝画面に表示中の）銘柄リスト。CSV出力はこれを対象にする。
+// currentDisplayList はポートフォリオタブでも使い回されるため、CSV用に別途保持する。
+let screenDisplayList = [];
 let currentModalCode = null;
 
 let sortKey = 'dividendYield';
@@ -1337,7 +1340,9 @@ function renderList(stocks) {
 
 function downloadCSV() {
   if (allResults.length === 0) { alert('先にスクリーニングを実行してください'); return; }
-  const sorted = getSorted(allResults);
+  // 画面に表示中の銘柄（業種フィルタ・お気に入り絞り込み・並び順を反映）だけを出力する
+  const sorted = screenDisplayList;
+  if (sorted.length === 0) { alert('表示中の銘柄がありません'); return; }
   const header = ['コード','会社名','セクター','業種','株価','配当利回り(%)','PER','PBR','連続維持/増配年数','売上トレンドR2','利益トレンドR2'];
   const rows = sorted.map(s => [
     s.code, s.jaName || s.name, s.s33Name || s.sector || '', s.industry || '',
@@ -1353,7 +1358,8 @@ function downloadCSV() {
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `screening_${new Date().toISOString().slice(0,10)}.csv`;
+  const suffix = showWatchlistOnly ? '_watchlist' : '';
+  a.href = url; a.download = `screening${suffix}_${new Date().toISOString().slice(0,10)}.csv`;
   a.click(); URL.revokeObjectURL(url);
 }
 
@@ -1371,6 +1377,7 @@ function getSorted(stocks) {
 function renderCards(stocks) {
   const sorted = getSorted(stocks);
   currentDisplayList = sorted;
+  screenDisplayList = sorted;
   document.getElementById('resultNum').textContent = sorted.length;
 
   if (sorted.length === 0) {
