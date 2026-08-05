@@ -1216,7 +1216,7 @@ header .status-pill.error { color: var(--accent); }
 
 <div class="modal-overlay" id="modal" style="display:none" onclick="closeModal(event)">
   <div class="modal" id="modalContent">
-    <button class="modal-close" onclick="document.getElementById('modal').style.display='none'">✕ 閉じる</button>
+    <button class="modal-close" onclick="closeModalNow()">✕ 閉じる</button>
     <div id="modalHeaderFixed" class="modal-header-fixed"></div>
     <div id="modalBodyScroll" class="modal-body-scroll"></div>
   </div>
@@ -1324,6 +1324,10 @@ let currentDisplayList = [];
 // currentDisplayList はポートフォリオタブでも使い回されるため、CSV用に別途保持する。
 let screenDisplayList = [];
 let currentModalCode = null;
+// モーダル表示中にお気に入りを切り替えると、絞り込み条件によっては表示中のリストから
+// その銘柄が消えてしまい「次へ」でナビゲートできなくなる。モーダルを開いている間は
+// リストの再フィルタを保留し、閉じたタイミングでまとめて反映する。
+let pendingWatchlistRefresh = false;
 
 let sortKey = 'dividendYield';
 
@@ -1399,7 +1403,13 @@ function toggleWatchlist(e, code) {
     mStar.className = `star-btn ${watchlist.includes(code) ? 'active' : ''}`;
   }
 
-  applyFilters();
+  const modalOpen = document.getElementById('modal').style.display === 'flex';
+  if (modalOpen && (showWatchlistOnly || hideWatchlist)) {
+    // モーダルを閉じるまでリストの再フィルタを保留（「次へ」でのナビゲート切れを防ぐ）
+    pendingWatchlistRefresh = true;
+  } else {
+    applyFilters();
+  }
 }
 
 function toggleWatchlistFilter() {
@@ -2253,9 +2263,15 @@ function openModal(code) {
 }
 
 function closeModal(e) {
-  if (e.target.id === 'modal') {
-    document.getElementById('modal').style.display = 'none';
-    currentModalCode = null;
+  if (e.target.id === 'modal') closeModalNow();
+}
+
+function closeModalNow() {
+  document.getElementById('modal').style.display = 'none';
+  currentModalCode = null;
+  if (pendingWatchlistRefresh) {
+    pendingWatchlistRefresh = false;
+    applyFilters();
   }
 }
 
