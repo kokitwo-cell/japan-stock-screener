@@ -534,6 +534,24 @@ header .status-pill.error { color: var(--accent); }
 .modal-metric-val.green { color: var(--accent2); }
 .modal-metric-val.red { color: var(--accent); }
 
+.modal-note-section { margin-bottom: 28px; }
+.modal-note-lbl {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--ink3);
+  margin-bottom: 8px; border-left: 3px solid var(--accent3); padding-left: 8px;
+}
+.modal-note-input {
+  width: 100%; min-height: 80px; resize: vertical;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; font-size: 13px; line-height: 1.6; color: var(--ink);
+  font-family: var(--sans); outline: none; transition: border-color 0.15s;
+}
+.modal-note-input:focus { border-color: var(--accent3); }
+.modal-note-status {
+  font-family: var(--mono); font-size: 10px; color: var(--accent2);
+  margin-top: 4px; height: 14px;
+}
+.note-badge { font-size: 12px; vertical-align: middle; cursor: help; }
+
 .full-chart-section { margin-bottom: 24px; }
 .full-chart-lbl { font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--ink3); margin-bottom: 8px; border-left: 3px solid var(--accent3); padding-left: 8px; }
 .full-chart-wrap { height: 160px; position: relative; }
@@ -1333,6 +1351,10 @@ let sortKey = 'dividendYield';
 
 let viewMode = 'list';
 let watchlist = JSON.parse(localStorage.getItem('watchlist') || '[]');
+let stockNotes = JSON.parse(localStorage.getItem('stockNotes') || '{}');
+let noteStatusTimer = null;
+// メモを編集した場合、モーダルを閉じたタイミングでリスト側の📝バッジ表示を更新する
+let noteEdited = false;
 let showWatchlistOnly = false;
 let hideWatchlist = false;
 const miniCharts = {};
@@ -1409,6 +1431,28 @@ function toggleWatchlist(e, code) {
     pendingWatchlistRefresh = true;
   } else {
     applyFilters();
+  }
+}
+
+// テキストエリアの中身として安全に埋め込めるようエスケープ（</textarea>による構造崩れ等を防ぐ）
+function escapeForTextarea(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function onModalNoteInput(code, value) {
+  if (value && value.trim()) {
+    stockNotes[code] = value;
+  } else {
+    delete stockNotes[code];
+  }
+  localStorage.setItem('stockNotes', JSON.stringify(stockNotes));
+  noteEdited = true;
+
+  const statusEl = document.getElementById('modalNoteStatus');
+  if (statusEl) {
+    statusEl.textContent = '保存しました';
+    clearTimeout(noteStatusTimer);
+    noteStatusTimer = setTimeout(() => { statusEl.textContent = ''; }, 1500);
   }
 }
 
@@ -1732,7 +1776,7 @@ function renderList(stocks) {
         <span class="star-btn ${watchlist.includes(s.code) ? 'active' : ''}" onclick="toggleWatchlist(event, '${s.code}')">★</span>
         <span class="code">${s.code}</span>
         <span class="name">
-          <span class="name-info">${s.jaName || s.name}${held.has(s.code) ? ' <span class="held-badge">保有中</span>' : ''}<small>${s.s33Name || s.industry || s.sector || ''}</small></span>
+          <span class="name-info">${s.jaName || s.name}${held.has(s.code) ? ' <span class="held-badge">保有中</span>' : ''}${stockNotes[s.code] ? ' <span class="note-badge" title="メモあり">📝</span>' : ''}<small>${s.s33Name || s.industry || s.sector || ''}</small></span>
           ${summary ? `<span class="name-summary" title="${summary.replace(/"/g, '&quot;')}">${summary}</span>` : ''}
         </span>
         <span class="val yield-val">${yld}${spike ? ` <span class="warn-icon" title="最新配当が前年(${spike.prev}円)から急増しています。特別・記念配当を含む可能性があり、通常時の利回りは約${spike.normalYield.toFixed(1)}%とみられます。">⚠</span>` : ''}</span>
@@ -1842,7 +1886,7 @@ function cardHTML(s) {
       <div style="display:flex; gap:8px; align-items:flex-start">
         <div class="star-btn ${watchlist.includes(s.code) ? 'active' : ''}" onclick="toggleWatchlist(event, '${s.code}')" style="margin-top:2px;">★</div>
         <div>
-          <div style="display:flex; gap:6px; align-items:center;"><div class="code-chip">${s.code}</div>${held ? '<span class="held-badge">保有中</span>' : ''}</div>
+          <div style="display:flex; gap:6px; align-items:center;"><div class="code-chip">${s.code}</div>${held ? '<span class="held-badge">保有中</span>' : ''}${stockNotes[s.code] ? '<span class="note-badge" title="メモあり">📝</span>' : ''}</div>
           <div class="stock-name" style="margin-top:6px">${s.jaName || s.name}</div>
           <div class="stock-industry">${s.s33Name || s.industry || s.sector || ''}</div>
         </div>
@@ -2103,6 +2147,12 @@ function openModal(code) {
       </div>
     </div>
 
+    <div class="modal-note-section">
+      <div class="modal-note-lbl">📝 マイメモ</div>
+      <textarea class="modal-note-input" id="modalNoteInput" placeholder="この銘柄についてのメモを入力（入力すると自動保存されます）" oninput="onModalNoteInput('${s.code}', this.value)">${escapeForTextarea(stockNotes[s.code] || '')}</textarea>
+      <div class="modal-note-status" id="modalNoteStatus"></div>
+    </div>
+
     <div class="full-chart-section">
       <div class="full-chart-lbl">売上高 (億円)</div>
       <div class="full-chart-wrap"><canvas id="modalRev"></canvas></div>
@@ -2269,8 +2319,9 @@ function closeModal(e) {
 function closeModalNow() {
   document.getElementById('modal').style.display = 'none';
   currentModalCode = null;
-  if (pendingWatchlistRefresh) {
+  if (pendingWatchlistRefresh || noteEdited) {
     pendingWatchlistRefresh = false;
+    noteEdited = false;
     applyFilters();
   }
 }
@@ -2816,7 +2867,7 @@ function holdingsTableHTML(cur) {
       const warnMark = spike ? ` <span class="warn-icon" title="最新配当が前年(${spike.prev}円)から急増。特別・記念配当を含む可能性があり、通常時利回りは約${spike.normalYield.toFixed(1)}%とみられます。">⚠</span>` : '';
       return `<tr class="${locked ? 'sim-row' : ''}">
         <td style="font-family:var(--mono)">${r.code}${badge}</td>
-        <td class="l pf-name-cell ${r.inCache ? 'clickable' : ''}" style="max-width:220px;overflow:hidden;text-overflow:ellipsis" title="${r.inCache ? 'クリックで詳細を表示' : r.name}" ${r.inCache ? `onclick="openHoldingModal('${r.code}')"` : ''}>${r.name}${warn ? ' ⚠' : ''}</td>
+        <td class="l pf-name-cell ${r.inCache ? 'clickable' : ''}" style="max-width:220px;overflow:hidden;text-overflow:ellipsis" title="${r.inCache ? 'クリックで詳細を表示' : r.name}" ${r.inCache ? `onclick="openHoldingModal('${r.code}')"` : ''}>${r.name}${warn ? ' ⚠' : ''}${stockNotes[r.code] ? ' 📝' : ''}</td>
         <td class="l" style="color:var(--ink3);font-size:11px">${r.sector}<br><span class="sens-chip ${r.sensitivity}">${r.sensitivity === 'defensive' ? 'ディフェンシブ' : '景気敏感'}</span></td>
         <td>${locked ? sharesCell : `<input class="inp-mini" type="number" min="0" step="1" value="${r.shares}" onchange="updateHolding(${i},'shares',this.value)">`}</td>
         <td>${locked ? r.nisaShares.toLocaleString() : `<input class="inp-mini" type="number" min="0" step="1" value="${r.nisaShares}" onchange="updateHolding(${i},'nisaShares',this.value)">`}</td>
