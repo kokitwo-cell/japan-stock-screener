@@ -319,8 +319,19 @@ header .status-pill.error { color: var(--accent); }
 }
 .list-view .list-row:hover { background: var(--bg2); }
 .list-view .list-row .code { font-family: var(--mono); font-size: 12px; color: var(--ink3); }
-.list-view .list-row .name { font-size: 13px; font-weight: 700; }
-.list-view .list-row .name small { display: block; font-size: 11px; font-weight: 400; color: var(--ink3); margin-top: 1px; }
+.list-view .list-row .name { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.list-view .list-row .name-info { flex-shrink: 0; font-size: 13px; font-weight: 700; }
+.list-view .list-row .name-info small { display: block; font-size: 11px; font-weight: 400; color: var(--ink3); margin-top: 1px; }
+.list-view .list-row .name-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink3);
+}
 .list-view .list-row .val { font-family: var(--mono); font-size: 13px; text-align: right; }
 .list-view .list-row .yield-val { color: var(--accent2); font-weight: 700; }
 .list-view .list-row .streak { font-size: 11px; color: var(--accent3); text-align: right; }
@@ -827,6 +838,10 @@ header .status-pill.error { color: var(--accent); }
         <span class="toggle-label">★ お気に入りのみ表示</span>
         <div class="toggle-switch" id="swWatchlist"></div>
       </div>
+      <div class="toggle-row" id="toggleWatchlistExcludeBtn" onclick="toggleWatchlistExcludeFilter()">
+        <span class="toggle-label">☆ お気に入りを除いて表示</span>
+        <div class="toggle-switch" id="swWatchlistExclude"></div>
+      </div>
     </div>
 
     <div class="filter-section">
@@ -1315,6 +1330,7 @@ let sortKey = 'dividendYield';
 let viewMode = 'list';
 let watchlist = JSON.parse(localStorage.getItem('watchlist') || '[]');
 let showWatchlistOnly = false;
+let hideWatchlist = false;
 const miniCharts = {};
 const modalCharts = {};
 
@@ -1388,8 +1404,25 @@ function toggleWatchlist(e, code) {
 
 function toggleWatchlistFilter() {
   showWatchlistOnly = !showWatchlistOnly;
+  if (showWatchlistOnly && hideWatchlist) {
+    hideWatchlist = false;
+    document.getElementById('toggleWatchlistExcludeBtn').classList.remove('active');
+    document.getElementById('swWatchlistExclude').classList.remove('on');
+  }
   document.getElementById('toggleWatchlistBtn').classList.toggle('active', showWatchlistOnly);
   document.getElementById('swWatchlist').classList.toggle('on', showWatchlistOnly);
+  applyFilters();
+}
+
+function toggleWatchlistExcludeFilter() {
+  hideWatchlist = !hideWatchlist;
+  if (hideWatchlist && showWatchlistOnly) {
+    showWatchlistOnly = false;
+    document.getElementById('toggleWatchlistBtn').classList.remove('active');
+    document.getElementById('swWatchlist').classList.remove('on');
+  }
+  document.getElementById('toggleWatchlistExcludeBtn').classList.toggle('active', hideWatchlist);
+  document.getElementById('swWatchlistExclude').classList.toggle('on', hideWatchlist);
   applyFilters();
 }
 
@@ -1642,6 +1675,8 @@ function applyFilters() {
 
   if (showWatchlistOnly) {
     filtered = filtered.filter(s => watchlist.includes(s.code));
+  } else if (hideWatchlist) {
+    filtered = filtered.filter(s => !watchlist.includes(s.code));
   }
 
   document.getElementById('progressLabel').textContent = `完了: ${filtered.length}社ヒット / ${allResults.length}社中`;
@@ -1682,10 +1717,14 @@ function renderList(stocks) {
       const pbr = s.pbr > 0 ? s.pbr.toFixed(2) + 'x' : '—';
       const price = s.currentPrice > 0 ? '¥' + s.currentPrice.toLocaleString() : '—';
       const streak = s.dividendStreak > 0 ? s.dividendStreak + '年' : '—';
+      const summary = s.businessSummaryJa || '';
       return `<div class="list-row" onclick="openModal('${s.code}')">
         <span class="star-btn ${watchlist.includes(s.code) ? 'active' : ''}" onclick="toggleWatchlist(event, '${s.code}')">★</span>
         <span class="code">${s.code}</span>
-        <span class="name">${s.jaName || s.name}${held.has(s.code) ? ' <span class="held-badge">保有中</span>' : ''}<small>${s.s33Name || s.industry || s.sector || ''}</small></span>
+        <span class="name">
+          <span class="name-info">${s.jaName || s.name}${held.has(s.code) ? ' <span class="held-badge">保有中</span>' : ''}<small>${s.s33Name || s.industry || s.sector || ''}</small></span>
+          ${summary ? `<span class="name-summary" title="${summary.replace(/"/g, '&quot;')}">${summary}</span>` : ''}
+        </span>
         <span class="val yield-val">${yld}${spike ? ` <span class="warn-icon" title="最新配当が前年(${spike.prev}円)から急増しています。特別・記念配当を含む可能性があり、通常時の利回りは約${spike.normalYield.toFixed(1)}%とみられます。">⚠</span>` : ''}</span>
         <span class="val">${price}</span>
         <span class="val">${per}</span>
@@ -1716,7 +1755,7 @@ function downloadCSV() {
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const suffix = showWatchlistOnly ? '_watchlist' : '';
+  const suffix = showWatchlistOnly ? '_watchlist' : (hideWatchlist ? '_excl_watchlist' : '');
   a.href = url; a.download = `screening${suffix}_${new Date().toISOString().slice(0,10)}.csv`;
   a.click(); URL.revokeObjectURL(url);
 }
