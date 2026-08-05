@@ -987,6 +987,17 @@ header .status-pill.error { color: var(--accent); }
         </div>
 
         <div class="mc-rule">
+          <div class="toggle-row mc-rule-row" id="mcRow_postCutStagnation" onclick="toggleMcRule('postCutStagnation')">
+            <span class="toggle-label">減配後、水準が長期間戻らない銘柄を除外</span>
+            <div class="toggle-switch sm" id="mcSw_postCutStagnation"></div>
+          </div>
+          <div class="mc-rule-inputs">
+            <input class="inp inp-sm" type="number" id="mcVal_postCutStagnation" min="1" max="10" step="1" onclick="event.stopPropagation()" oninput="setMcValue('postCutStagnation', this.value)">
+            <span class="mc-unit">年以上停滞で除外</span>
+          </div>
+        </div>
+
+        <div class="mc-rule">
           <div class="toggle-row mc-rule-row" id="mcRow_streak" onclick="toggleMcRule('streak')">
             <span class="toggle-label">連続維持・増配年数</span>
             <div class="toggle-switch sm" id="mcSw_streak"></div>
@@ -1371,6 +1382,7 @@ const MY_CRITERIA_DEFAULTS = {
     epsR2:       { on: true, value: 0.70 },
     noCutEver:   { on: true },
     noCutRecent: { on: true, value: 3 },
+    postCutStagnation: { on: true, value: 3 },
     streak:      { on: true, value: 5 },
     divYears:    { on: true, value: 8 },
     yieldMin:    { on: true, value: 1.0 },
@@ -1644,6 +1656,52 @@ function recentDividendCutYears(data, n) {
   return cuts;
 }
 
+// 実際に配当が支払われた年数（末尾から連続してdividend>0の年をカウント）。
+// dividendYearsの配列長だけで判定すると、無配の年も含めて「実績あり」と誤判定してしまうため。
+function realDividendYears(data) {
+  const dv = data.dividend || [];
+  let count = 0;
+  for (let i = dv.length - 1; i >= 0; i--) {
+    if (dv[i] > 0) count++;
+    else break;
+  }
+  return count;
+}
+
+// 減配後、その水準（またはそれ以下）から抜け出すのに何年かかったかを検出する。
+// 「直近N年に減配なし」だけでは、何年も前に減配してから長期間水準を回復できていないケースを
+// 見逃してしまう（例: 1年で回復した減配は許容したいが、4年停滞した減配は除外したい）。
+function slowRecoveryCuts(data, stagnationYears) {
+  const dv = data.dividend || [];
+  const dy = data.dividendYears || [];
+  const flags = [];
+  let i = 1;
+  while (i < dv.length) {
+    if (dv[i] < dv[i - 1]) {
+      const cutLevel = dv[i];
+      const cutYear = dy[i];
+      let j = i;
+      while (j < dv.length && dv[j] <= cutLevel) j++;
+      const stagnation = j - i;
+      if (stagnation >= stagnationYears) flags.push({ year: cutYear, stagnation });
+      i = j > i ? j : i + 1;
+    } else {
+      i++;
+    }
+  }
+  return flags;
+}
+
+// 配当実績データの年に歯抜けがないか（データ取得元の欠測の可能性があり、無配と誤解されやすい）
+function dividendYearGaps(data) {
+  const dy = data.dividendYears || [];
+  const gaps = [];
+  for (let i = 1; i < dy.length; i++) {
+    if (dy[i] - dy[i - 1] > 1) gaps.push([dy[i - 1], dy[i]]);
+  }
+  return gaps;
+}
+
 // マイ基準（オンになっている項目のみAND判定）を満たすか判定
 function passesMyCriteria(data) {
   const r = myCriteria.rules;
@@ -1656,8 +1714,9 @@ function passesMyCriteria(data) {
   if (r.epsR2.on && !((et.slope || 0) > 0 && (et.r2 || 0) >= parseFloat(r.epsR2.value))) return false;
   if (r.noCutEver.on && data.noDividendCut === false) return false;
   if (r.noCutRecent.on && recentDividendCutYears(data, parseInt(r.noCutRecent.value)).length > 0) return false;
+  if (r.postCutStagnation.on && slowRecoveryCuts(data, parseInt(r.postCutStagnation.value)).length > 0) return false;
   if (r.streak.on && (data.dividendStreak || 0) < parseFloat(r.streak.value)) return false;
-  if (r.divYears.on && (data.dividendYears || []).length < parseFloat(r.divYears.value)) return false;
+  if (r.divYears.on && realDividendYears(data) < parseFloat(r.divYears.value)) return false;
 
   if (r.yieldMin.on || r.yieldMax.on) {
     const yld = data.dividendYield || 0;
@@ -1766,6 +1825,7 @@ function renderList(stocks) {
     </div>
     ${stocks.map(s => {
       const spike = dividendSpike(s);
+      const gaps = dividendYearGaps(s);
       const yld = s.dividendYield > 0 ? s.dividendYield.toFixed(1) + '%' : '—';
       const per = s.per > 0 ? s.per.toFixed(1) + 'x' : '—';
       const pbr = s.pbr > 0 ? s.pbr.toFixed(2) + 'x' : '—';
@@ -1783,7 +1843,7 @@ function renderList(stocks) {
         <span class="val">${price}</span>
         <span class="val">${per}</span>
         <span class="val">${pbr}</span>
-        <span class="streak">${streak}</span>
+        <span class="streak">${streak}${gaps.length ? ` <span class="warn-icon" title="配当データに欠落年があります（${gaps.map(g => g[0] + '〜' + g[1]).join(', ')}）。データ取得元の欠測の可能性があり、無配だったとは限りません。">⚠</span>` : ''}</span>
       </div>`;
     }).join('')}
   `;
@@ -1878,6 +1938,7 @@ function cardHTML(s) {
   const revOk = rt && rt.slope > 0 && rt.r2 > 0.7;
   const profOk = pt && pt.slope > 0 && pt.r2 > 0.7;
   const spike = dividendSpike(s);
+  const gaps = dividendYearGaps(s);
   const held = heldCodes().has(s.code);
 
   return `
@@ -1926,6 +1987,7 @@ function cardHTML(s) {
 
     <div class="badges">
       ${divStreak ? `<span class="badge badge-ok">🏆 ${divStreak}維持/増配</span>` : ''}
+      ${gaps.length ? `<span class="warn-icon" title="配当データに欠落年があります（${gaps.map(g => g[0] + '〜' + g[1]).join(', ')}）。データ取得元の欠測の可能性があり、無配だったとは限りません。">⚠ データ欠落</span>` : ''}
       ${badge(revOk, '売上↑')}
       ${badge(profOk, '利益↑')}
       ${badge(divOk, '減配なし')}
@@ -2078,6 +2140,7 @@ function openModal(code) {
   const pt = s.profitTrend;
   const et = s.epsTrend;
   const modalSpike = dividendSpike(s);
+  const modalGaps = dividendYearGaps(s);
   const modalHeld = heldCodes().has(s.code);
 
   document.getElementById('modalHeaderFixed').innerHTML = `
@@ -2131,7 +2194,7 @@ function openModal(code) {
       </div>
       <div class="modal-metric">
         <div class="modal-metric-lbl">連続維持/増配</div>
-        <div class="modal-metric-val ${s.dividendStreak >= 5 ? 'green' : ''}">${s.dividendStreak > 0 ? s.dividendStreak + '年' : '—'}</div>
+        <div class="modal-metric-val ${s.dividendStreak >= 5 ? 'green' : ''}">${s.dividendStreak > 0 ? s.dividendStreak + '年' : '—'}${modalGaps.length ? ` <span class="warn-icon" title="配当データに欠落年があります（${modalGaps.map(g => g[0] + '〜' + g[1]).join(', ')}）。データ取得元の欠測の可能性があり、無配だったとは限りません。">⚠</span>` : ''}</div>
       </div>
       <div class="modal-metric">
         <div class="modal-metric-lbl">売上トレンド R²</div>
