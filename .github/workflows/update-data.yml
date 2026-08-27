@@ -2,10 +2,12 @@ name: Update stock data
 
 on:
   schedule:
-    # 平日 10:00 UTC (= 19:00 JST、東証大引け 15:00 JST の4時間後) に株価のみ更新
-    - cron: '0 10 * * 1-5'
-    # 毎日 15:00 UTC に企業説明文の翻訳を未取得分だけ補完（無料翻訳APIの失敗分を毎日リトライ）
-    - cron: '0 15 * * *'
+    # 平日 10:07 UTC (= 19:07 JST、東証大引け 15:00 JST の4時間後) に株価のみ更新
+    # 分を0にせず7分にしているのは、GitHubが正時(0分)ちょうどのスケジュール実行を
+    # 混雑を理由に大幅遅延させることがあるため(公式ドキュメントでも正時を避けるよう案内あり)。
+    - cron: '7 10 * * 1-5'
+    # 毎日 15:13 UTC に企業説明文の翻訳を未取得分だけ補完（無料翻訳APIの失敗分を毎日リトライ）
+    - cron: '13 15 * * *'
   workflow_dispatch:
     inputs:
       mode:
@@ -48,7 +50,7 @@ jobs:
         run: pip install -r scripts/requirements.txt
 
       - name: Update data (prices)
-        if: github.event.schedule == '0 10 * * 1-5' || github.event.inputs.mode == 'prices'
+        if: github.event.schedule == '7 10 * * 1-5' || github.event.inputs.mode == 'prices'
         env:
           UPDATE_PRICES_ONLY: '1'
           JQUANTS_REFRESH_TOKEN: ${{ secrets.JQUANTS_REFRESH_TOKEN }}
@@ -76,7 +78,7 @@ jobs:
         run: python scripts/update_data.py
 
       - name: Update data (business summary translation)
-        if: github.event.schedule == '0 15 * * *' || github.event.inputs.mode == 'summary'
+        if: github.event.schedule == '13 15 * * *' || github.event.inputs.mode == 'summary'
         env:
           ENRICH_SUMMARY: '1'
           JQUANTS_REFRESH_TOKEN: ${{ secrets.JQUANTS_REFRESH_TOKEN }}
