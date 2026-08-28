@@ -818,6 +818,10 @@ header .status-pill.error { color: var(--accent); }
         <span>株価更新</span>
         <span id="pricesUpdated" style="color:var(--ink2);font-size:10px">—</span>
       </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+        <span>株価の日付</span>
+        <span id="priceDate" style="color:var(--ink2);font-size:10px">—</span>
+      </div>
     </div>
 
     <div class="update-info">
@@ -1346,6 +1350,15 @@ async function loadStaticData() {
     }
     if (latestPriceTs) {
       document.getElementById('pricesUpdated').textContent = fmtDt(latestPriceTs);
+    }
+    // 「いつ時点の終値か」は取得を走らせた時刻とは別物なので分けて表示する
+    let latestPriceDate = null;
+    for (const k in STOCK_CACHE) {
+      const d = STOCK_CACHE[k].priceDate;
+      if (d && (!latestPriceDate || d > latestPriceDate)) latestPriceDate = d;
+    }
+    if (latestPriceDate) {
+      document.getElementById('priceDate').textContent = `${latestPriceDate.replace(/-/g, '/')} 終値`;
     }
     setStatus('done', `${Object.keys(STOCK_CACHE).length}銘柄読み込み完了`);
   } catch (e) {
