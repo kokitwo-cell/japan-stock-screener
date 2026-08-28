@@ -979,13 +979,21 @@ def latest_closed_session_date():
     yfinance は場中だとその日の未確定バーも返すため、「まだ大引けしていない日」を
     除外しないと場中の値を終値として保存してしまう。祝日カレンダーを持たなくて済むよう
     流動性の高い銘柄の実際の取引日から判定する。
+
+    判定は必ず dropna() 後の行から行う。Yahoo は大引け直後、終値が NaN のままの行を
+    先に作ることがあり、index だけを見ると「その日の終値がある」と誤認する。すると
+    取得側(dropna 済み)とズレて、実際には前営業日の終値しか保存できていないのに
+    当日分を取得済みと記録してしまい、終値が配信された後に取りに行かなくなる。
     """
     try:
         hist = yf.Ticker("7203.T").history(period="10d")
         if hist.empty:
             return None
+        closes = hist["Close"].dropna()
+        if closes.empty:
+            return None
         now_jst = datetime.now(JST)
-        for d in sorted({ts.date() for ts in hist.index}, reverse=True):
+        for d in sorted({ts.date() for ts in closes.index}, reverse=True):
             # 大引け15:00 + 確定待ちの余裕10分
             if now_jst >= datetime(d.year, d.month, d.day, 15, 10, tzinfo=JST):
                 return d
