@@ -21,7 +21,10 @@ import threading
 import csv
 import io
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+# 東証の営業時間判定用。日本にサマータイムは無いので固定オフセットで十分。
+JST = timezone(timedelta(hours=9))
 
 import yfinance as yf
 import requests
@@ -970,18 +973,44 @@ def fetch_all(stock_list):
     return cache_data
 
 
+def latest_closed_session_date():
+    """東証で直近に大引けを迎えた営業日を、実データ(トヨタ)から判定して date で返す。
+
+    yfinance は場中だとその日の未確定バーも返すため、「まだ大引けしていない日」を
+    除外しないと場中の値を終値として保存してしまう。祝日カレンダーを持たなくて済むよう
+    流動性の高い銘柄の実際の取引日から判定する。
+    """
+    try:
+        hist = yf.Ticker("7203.T").history(period="10d")
+        if hist.empty:
+            return None
+        now_jst = datetime.now(JST)
+        for d in sorted({ts.date() for ts in hist.index}, reverse=True):
+            # 大引け15:00 + 確定待ちの余裕10分
+            if now_jst >= datetime(d.year, d.month, d.day, 15, 10, tzinfo=JST):
+                return d
+    except Exception:
+        pass
+    return None
+
+
 def update_prices_only(cache):
     """株価と配当利回りのみ高速に再取得"""
-    # スケジュール実行の遅延対策で同日に複数回cronを仕掛けている場合、
-    # 既にその日の分が更新済みなら無駄なフル再取得をスキップする。
-    today = datetime.now().strftime("%Y-%m-%d")
-    already_done = sum(
-        1 for d in cache.values()
-        if isinstance(d, dict) and str(d.get("pricesUpdatedAt", "")).startswith(today)
-    )
-    if cache and already_done >= len(cache) * 0.9:
-        print(f"⏭ 本日({today})分は既に更新済み({already_done}/{len(cache)}銘柄)のためスキップ")
-        return
+    # 遅延対策で同じ日に複数回cronを仕掛けているため、目的の終値が既に入っていれば
+    # フル再取得をスキップする。判定は「実行した日」ではなく「取得済みの終値の営業日」で
+    # 行う: 実行日で判定すると、場中や早朝に走った回で当日分が済んだ扱いになり、
+    # 大引け後の本来の更新が丸ごとスキップされてしまう。
+    target_date = latest_closed_session_date()
+    if target_date:
+        target_key = target_date.isoformat()
+        already_done = sum(
+            1 for d in cache.values()
+            if isinstance(d, dict) and d.get("priceDate") == target_key
+        )
+        if cache and already_done >= len(cache) * 0.9:
+            print(f"⏭ {target_key} の終値は取得済み({already_done}/{len(cache)}銘柄)のためスキップ")
+            return
+        print(f"対象営業日(大引け済み): {target_key}")
 
     codes = list(cache.keys())
     total = len(codes)
@@ -993,12 +1022,19 @@ def update_prices_only(cache):
     for i, code in enumerate(codes):
         try:
             ticker = yf.Ticker(f"{code}.T")
-            hist = ticker.history(period="5d")
+            hist = ticker.history(period="10d")
             if hist.empty:
                 continue
-            price = round(float(hist["Close"].dropna().iloc[-1]))
+            closes = hist["Close"].dropna()
+            if target_date is not None:
+                # 大引け前の未確定バーを終値として拾わないよう対象営業日以前に限定する
+                closes = closes[[ts.date() <= target_date for ts in closes.index]]
+            if closes.empty:
+                continue
+            price = round(float(closes.iloc[-1]))
             if price <= 0:
                 continue
+            price_date = closes.index[-1].date().isoformat()
 
             latest_div = 0
             try:
@@ -1017,6 +1053,7 @@ def update_prices_only(cache):
                 latest_div = div_vals[-1] if div_vals else 0
 
             cache[code]["currentPrice"] = price
+            cache[code]["priceDate"] = price_date
             cache[code]["pricesUpdatedAt"] = prices_updated_at
             if latest_div > 0:
                 cache[code]["dividendYield"] = round(latest_div / price * 100, 2)
