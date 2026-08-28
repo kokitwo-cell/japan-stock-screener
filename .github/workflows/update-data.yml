@@ -6,6 +6,11 @@ on:
     # 分を0にせず7分にしているのは、GitHubが正時(0分)ちょうどのスケジュール実行を
     # 混雑を理由に大幅遅延させることがあるため(公式ドキュメントでも正時を避けるよう案内あり)。
     - cron: '7 10 * * 1-5'
+    # 上の実行がGitHub側の混雑で数時間〜半日遅延することがあるため、保険としてもう2回
+    # 同じ株価更新を仕掛けておく(13:11 / 16:19 UTC)。update_prices_only側で「その日の分は
+    # 既に更新済み」なら即スキップするので、最初の実行が無事終わっていれば無駄打ちにはならない。
+    - cron: '11 13 * * 1-5'
+    - cron: '19 16 * * 1-5'
     # 毎日 15:13 UTC に企業説明文の翻訳を未取得分だけ補完（無料翻訳APIの失敗分を毎日リトライ）
     - cron: '13 15 * * *'
   workflow_dispatch:
@@ -50,7 +55,9 @@ jobs:
         run: pip install -r scripts/requirements.txt
 
       - name: Update data (prices)
-        if: github.event.schedule == '7 10 * * 1-5' || github.event.inputs.mode == 'prices'
+        if: >-
+          contains(fromJSON('["7 10 * * 1-5", "11 13 * * 1-5", "19 16 * * 1-5"]'), github.event.schedule)
+          || github.event.inputs.mode == 'prices'
         env:
           UPDATE_PRICES_ONLY: '1'
           JQUANTS_REFRESH_TOKEN: ${{ secrets.JQUANTS_REFRESH_TOKEN }}

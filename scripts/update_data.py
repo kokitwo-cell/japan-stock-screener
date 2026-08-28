@@ -972,6 +972,17 @@ def fetch_all(stock_list):
 
 def update_prices_only(cache):
     """株価と配当利回りのみ高速に再取得"""
+    # スケジュール実行の遅延対策で同日に複数回cronを仕掛けている場合、
+    # 既にその日の分が更新済みなら無駄なフル再取得をスキップする。
+    today = datetime.now().strftime("%Y-%m-%d")
+    already_done = sum(
+        1 for d in cache.values()
+        if isinstance(d, dict) and str(d.get("pricesUpdatedAt", "")).startswith(today)
+    )
+    if cache and already_done >= len(cache) * 0.9:
+        print(f"⏭ 本日({today})分は既に更新済み({already_done}/{len(cache)}銘柄)のためスキップ")
+        return
+
     codes = list(cache.keys())
     total = len(codes)
     print(f"株価更新: {total}銘柄")
