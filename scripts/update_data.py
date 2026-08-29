@@ -1174,6 +1174,40 @@ def enrich_business_summary(cache):
 
 
 # ============================================================
+def diag_prices(codes):
+    """yfinance が実際に何を返しているかをそのまま出力する。
+
+    「終値が取れない」ときに、Yahoo にデータが無いのか、こちらの取り出し方
+    (期間指定・タイムゾーン・NaN・auto_adjust など)が悪いのかを推測せず
+    切り分けるための診断。取得結果を加工せずそのまま出す。
+    """
+    print(f"yfinance version : {getattr(yf, '__version__', '?')}")
+    print(f"now UTC          : {datetime.now(timezone.utc).isoformat()}")
+    print(f"now JST          : {datetime.now(JST).isoformat()}")
+    variants = [
+        ("period=10d",                {"period": "10d"}),
+        ("period=1mo",                {"period": "1mo"}),
+        ("period=10d,auto_adjust=F",  {"period": "10d", "auto_adjust": False}),
+        ("start=-14d",                {"start": (datetime.now(JST) - timedelta(days=14)).strftime("%Y-%m-%d")}),
+    ]
+    for code in codes:
+        print("=" * 55)
+        print(f"[{code}.T]")
+        for label, kwargs in variants:
+            try:
+                hist = yf.Ticker(f"{code}.T").history(**kwargs)
+                tz = getattr(hist.index, "tz", None)
+                print(f"  -- {label}: {len(hist)}行 index.tz={tz}")
+                if hist.empty:
+                    continue
+                for ts, row in hist.tail(4).iterrows():
+                    close = row.get("Close")
+                    vol = row.get("Volume")
+                    print(f"       ts={ts} date={ts.date()} Close={close!r} Volume={vol!r}")
+            except Exception as e:
+                print(f"  -- {label}: 失敗 {type(e).__name__}: {e}")
+
+
 def diag_irbank(code):
     """1銘柄のir-bank /results /dividend ページ構造をダンプ（パーサ調整用）"""
     from bs4 import BeautifulSoup
@@ -1220,6 +1254,11 @@ def main():
     do_summary = os.environ.get("ENRICH_SUMMARY") == "1"
     fetch_limit = int(os.environ.get("FETCH_LIMIT") or 0) or None
     diag_code = os.environ.get("DIAG_IRBANK") or ""
+    diag_price_codes = os.environ.get("DIAG_PRICES") or ""
+
+    if diag_price_codes:
+        diag_prices([c.strip() for c in diag_price_codes.split(",") if c.strip()])
+        return
 
     if diag_code:
         diag_irbank(diag_code.strip())
