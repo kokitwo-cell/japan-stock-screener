@@ -979,13 +979,21 @@ def latest_closed_session_date():
     yfinance は場中だとその日の未確定バーも返すため、「まだ大引けしていない日」を
     除外しないと場中の値を終値として保存してしまう。祝日カレンダーを持たなくて済むよう
     流動性の高い銘柄の実際の取引日から判定する。
+
+    判定は必ず dropna() 後の行から行う。Yahoo は大引け直後、終値が NaN のままの行を
+    先に作ることがあり、index だけを見ると「その日の終値がある」と誤認する。すると
+    取得側(dropna 済み)とズレて、実際には前営業日の終値しか保存できていないのに
+    当日分を取得済みと記録してしまい、終値が配信された後に取りに行かなくなる。
     """
     try:
         hist = yf.Ticker("7203.T").history(period="10d")
         if hist.empty:
             return None
+        closes = hist["Close"].dropna()
+        if closes.empty:
+            return None
         now_jst = datetime.now(JST)
-        for d in sorted({ts.date() for ts in hist.index}, reverse=True):
+        for d in sorted({ts.date() for ts in closes.index}, reverse=True):
             # 大引け15:00 + 確定待ちの余裕10分
             if now_jst >= datetime(d.year, d.month, d.day, 15, 10, tzinfo=JST):
                 return d
@@ -1166,6 +1174,40 @@ def enrich_business_summary(cache):
 
 
 # ============================================================
+def diag_prices(codes):
+    """yfinance が実際に何を返しているかをそのまま出力する。
+
+    「終値が取れない」ときに、Yahoo にデータが無いのか、こちらの取り出し方
+    (期間指定・タイムゾーン・NaN・auto_adjust など)が悪いのかを推測せず
+    切り分けるための診断。取得結果を加工せずそのまま出す。
+    """
+    print(f"yfinance version : {getattr(yf, '__version__', '?')}")
+    print(f"now UTC          : {datetime.now(timezone.utc).isoformat()}")
+    print(f"now JST          : {datetime.now(JST).isoformat()}")
+    variants = [
+        ("period=10d",                {"period": "10d"}),
+        ("period=1mo",                {"period": "1mo"}),
+        ("period=10d,auto_adjust=F",  {"period": "10d", "auto_adjust": False}),
+        ("start=-14d",                {"start": (datetime.now(JST) - timedelta(days=14)).strftime("%Y-%m-%d")}),
+    ]
+    for code in codes:
+        print("=" * 55)
+        print(f"[{code}.T]")
+        for label, kwargs in variants:
+            try:
+                hist = yf.Ticker(f"{code}.T").history(**kwargs)
+                tz = getattr(hist.index, "tz", None)
+                print(f"  -- {label}: {len(hist)}行 index.tz={tz}")
+                if hist.empty:
+                    continue
+                for ts, row in hist.tail(4).iterrows():
+                    close = row.get("Close")
+                    vol = row.get("Volume")
+                    print(f"       ts={ts} date={ts.date()} Close={close!r} Volume={vol!r}")
+            except Exception as e:
+                print(f"  -- {label}: 失敗 {type(e).__name__}: {e}")
+
+
 def diag_irbank(code):
     """1銘柄のir-bank /results /dividend ページ構造をダンプ（パーサ調整用）"""
     from bs4 import BeautifulSoup
@@ -1212,6 +1254,11 @@ def main():
     do_summary = os.environ.get("ENRICH_SUMMARY") == "1"
     fetch_limit = int(os.environ.get("FETCH_LIMIT") or 0) or None
     diag_code = os.environ.get("DIAG_IRBANK") or ""
+    diag_price_codes = os.environ.get("DIAG_PRICES") or ""
+
+    if diag_price_codes:
+        diag_prices([c.strip() for c in diag_price_codes.split(",") if c.strip()])
+        return
 
     if diag_code:
         diag_irbank(diag_code.strip())

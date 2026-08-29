@@ -27,8 +27,9 @@ on:
           - irbank-force
           - summary
           - diag
+          - diag-prices
       diag_code:
-        description: 'diag用銘柄コード(例: 7723)'
+        description: 'diag用銘柄コード(例: 7723)。diag-prices はカンマ区切り可(例: 7203,7994)'
         required: false
         default: '7723'
         type: string
@@ -97,12 +98,18 @@ jobs:
           DIAG_IRBANK: ${{ github.event.inputs.diag_code }}
         run: python scripts/update_data.py
 
+      - name: Diagnose price fetch
+        if: github.event.inputs.mode == 'diag-prices'
+        env:
+          DIAG_PRICES: ${{ github.event.inputs.diag_code }}
+        run: python scripts/update_data.py
+
       - name: Record portfolio history
-        if: github.event.inputs.mode != 'diag'
+        if: "!startsWith(github.event.inputs.mode, 'diag')"
         run: python scripts/record_history.py
 
       - name: Commit and push changes
-        if: github.event.inputs.mode != 'diag'
+        if: "!startsWith(github.event.inputs.mode, 'diag')"
         run: |
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
