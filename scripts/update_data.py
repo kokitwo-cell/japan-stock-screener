@@ -1008,15 +1008,21 @@ def update_prices_only(cache):
     # フル再取得をスキップする。判定は「実行した日」ではなく「取得済みの終値の営業日」で
     # 行う: 実行日で判定すると、場中や早朝に走った回で当日分が済んだ扱いになり、
     # 大引け後の本来の更新が丸ごとスキップされてしまう。
+    #
+    # 比較は「一致」ではなく「対象営業日以降を持っているか」で行う。Yahooの配信は
+    # 遅れることがあり、既に新しい終値を持っている状態で古い対象営業日が算出される
+    # ことがある。一致で判定すると、その回がスキップされずフル取得に入り、
+    # 持っていた新しい終値を古い値で上書きしてしまう(実際に 2026-08-31 の終値が
+    # 8/28 に巻き戻る事故が起きた)。
     target_date = latest_closed_session_date()
     if target_date:
         target_key = target_date.isoformat()
         already_done = sum(
             1 for d in cache.values()
-            if isinstance(d, dict) and d.get("priceDate") == target_key
+            if isinstance(d, dict) and str(d.get("priceDate") or "") >= target_key
         )
         if cache and already_done >= len(cache) * 0.9:
-            print(f"⏭ {target_key} の終値は取得済み({already_done}/{len(cache)}銘柄)のためスキップ")
+            print(f"⏭ {target_key} 以降の終値は取得済み({already_done}/{len(cache)}銘柄)のためスキップ")
             return
         print(f"対象営業日(大引け済み): {target_key}")
 
@@ -1043,6 +1049,12 @@ def update_prices_only(cache):
             if price <= 0:
                 continue
             price_date = closes.index[-1].date().isoformat()
+
+            # 既により新しい営業日の終値を持っているなら古い値で塗り替えない。
+            # Yahooは同じ銘柄でも呼ぶタイミングによって直近の終値をまだ返さないことが
+            # あり、そのまま書き戻すと表示が前の営業日に巻き戻ってしまう。
+            if str(cache[code].get("priceDate") or "") > price_date:
+                continue
 
             latest_div = 0
             try:
