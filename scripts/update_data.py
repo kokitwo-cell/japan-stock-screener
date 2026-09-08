@@ -11,6 +11,7 @@ GitHub Actions から週次で実行され、data/*.json を更新する。
   FETCH_LIMIT            - 取得する銘柄数の上限（オプション、デバッグ用）
   ENRICH_IRBANK          - "1" で ir-bank からの長期業績補完を実行
   UPDATE_PRICES_ONLY     - "1" で株価のみ更新
+  RECALC_YIELD           - "1" でキャッシュ済みデータから配当利回りのみ再計算（通信なし）
 """
 
 import os
@@ -429,6 +430,118 @@ def consecutive_dividend_growth(dividends):
     return count
 
 
+# ------------------------------------------------------------
+#  配当利回りの算出
+# ------------------------------------------------------------
+#  「年間配当（会計年度ベース）÷ 現在株価」を正とする。
+#  yfinance の直近12ヶ月合算(TTM)は、権利落ち日が12ヶ月の窓に3回入ると
+#  前期の期末配当と今期の中間配当を跨いで合算してしまい過大になる。
+#  （例: 3983 オロは年間配当50円に対しTTMが75円となり 3.8% と表示されていた。
+#    正しくは 50 ÷ 1964 = 2.55%）
+#  ir-bank 由来の年度別配当を持つ銘柄はそちらを使い、年度データが無い/古い銘柄
+#  （ETF・REIT や取得失敗銘柄）と、年度データが TTM と噛み合わない銘柄は TTM に委ねる。
+DIVIDEND_YIELD_MAX = 100      # これを超える利回りはデータ異常とみなす
+PARTIAL_YEAR_RATIO = 0.6      # 進行中年度が前年のこの割合未満なら期中の部分値とみなす
+# TTM が年間配当の何倍までなら「同じ配当を指している」とみなすか。
+# 1.5倍前後＝期末＋中間を跨いだ重複合算なので是正対象。2倍前後は ir-bank 側が
+# 中間配当しか拾えていない（＝年間額ではない）疑いが濃いので TTM を残す。
+TTM_MATCH_MIN = 0.95
+TTM_MATCH_MAX = 1.9
+
+
+def _last_positive_index(values, before=None):
+    """values の末尾（または before の手前）から見て最初に正の値を持つ添字"""
+    if not values:
+        return None
+    start = len(values) - 1 if before is None else before - 1
+    for i in range(start, -1, -1):
+        try:
+            if float(values[i] or 0) > 0:
+                return i
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def latest_annual_dividend(div_values, div_years, ref_year=None):
+    """会計年度ベースの直近の年間配当を (金額, 年度) で返す。取れなければ (0, None)。"""
+    if not div_values or not div_years or len(div_values) != len(div_years):
+        return 0, None
+    if ref_year is None:
+        ref_year = datetime.now(JST).year
+    idx = _last_positive_index(div_values)
+    if idx is None:
+        return 0, None
+    # 進行中の年度は中間配当しか反映されていないことがある。前年から大きく落ちて
+    # いる場合は年間額ではなく期中の部分値とみなし、直前の確定年度を採用する。
+    if div_years[idx] >= ref_year:
+        prev = _last_positive_index(div_values, idx)
+        if (prev is not None
+                and div_years[idx] - div_years[prev] <= 1
+                and div_values[idx] < div_values[prev] * PARTIAL_YEAR_RATIO):
+            idx = prev
+    return div_values[idx], div_years[idx]
+
+
+def resolve_dividend_yield(entry, price, ttm_dividend=0, ref_year=None):
+    """配当利回りを (利回り, 算出根拠) で返す。
+    根拠は "annual"（年間配当ベース）または "ttm"（直近12ヶ月実績ベース）。
+
+    年間配当ベースを本命にするが、ir-bank の1株配当は株式分割の遡及調整が
+    されておらず、期中の部分値や特別配当も混ざる。分割後の株価（yfinance は
+    調整済み）と組み合わせると利回りが跳ねるため、TTM と突き合わせて
+    「TTM が年間配当の 0.95〜1.9 倍に収まっている」ときだけ年間配当を採用する。
+    重複合算（期末＋中間を跨いで1.5倍前後）はこの範囲に入るので是正でき、
+    分割未調整・桁違い・中間配当しか拾えていない（TTM が約2倍になる）データは
+    範囲から外れるので TTM のまま残る。
+    """
+    try:
+        price = float(price or 0)
+    except (TypeError, ValueError):
+        price = 0
+    if price <= 0:
+        return 0, None
+    if ref_year is None:
+        ref_year = datetime.now(JST).year
+
+    def _yld(amount):
+        try:
+            v = round(float(amount) / price * 100, 2)
+        except (TypeError, ValueError, ZeroDivisionError):
+            return 0
+        return v if 0 < v <= DIVIDEND_YIELD_MAX else 0
+
+    annual, year = latest_annual_dividend(entry.get("dividend"), entry.get("dividendYears"), ref_year)
+    # ir-bank 由来かつ直近年度まで取れているものだけを年間配当ベースの候補にする
+    usable_annual = (
+        bool(entry.get("irbank_enriched"))
+        and annual > 0
+        and year is not None
+        and year >= ref_year - 1
+    )
+
+    if usable_annual:
+        if not ttm_dividend or ttm_dividend <= 0:
+            y = _yld(annual)
+            if y > 0:
+                return y, "annual"
+        elif annual * TTM_MATCH_MIN <= ttm_dividend <= annual * TTM_MATCH_MAX:
+            y = _yld(annual)
+            if y > 0:
+                return y, "annual"
+
+    if ttm_dividend and ttm_dividend > 0:
+        y = _yld(ttm_dividend)
+        if y > 0:
+            return y, "ttm"
+
+    if annual > 0:
+        y = _yld(annual)
+        if y > 0:
+            return y, "annual"
+    return 0, None
+
+
 def fetch_stock_data(code, name_hint=""):
     try:
         ticker = yf.Ticker(f"{code}.T")
@@ -565,6 +678,7 @@ def fetch_stock_data(code, name_hint=""):
             "noDividendCut": has_no_dividend_cut(div_values) if len(div_values)>=3 else None,
             "dividendStreak": div_streak,
             "dividendYield": div_yield,
+            "dividendYieldBasis": "ttm" if div_yield > 0 else None,
             "currentPrice": current_price,
             "cachedAt": datetime.now().isoformat(),
         }
@@ -651,6 +765,7 @@ def fetch_etf_data(code, name_hint=""):
             "dividend": div_values,
             "dividendYears": div_years,
             "dividendYield": div_yield,
+            "dividendYieldBasis": "ttm" if div_yield > 0 else None,
             "currentPrice": round(price, 1),
             "cachedAt": datetime.now().isoformat(),
         }
@@ -1056,7 +1171,8 @@ def update_prices_only(cache):
             if str(cache[code].get("priceDate") or "") > price_date:
                 continue
 
-            latest_div = 0
+            # 直近12ヶ月の受取実績（TTM）。年度データを持たない銘柄向けの控え。
+            ttm_div = 0
             try:
                 divs = ticker.dividends
                 if divs is not None and not divs.empty:
@@ -1064,19 +1180,21 @@ def update_prices_only(cache):
                     now = pd.Timestamp.now(tz=tz)
                     cutoff = now - pd.DateOffset(months=12)
                     recent = divs[(divs.index >= cutoff) & (divs.index <= now)]
-                    latest_div = round(float(recent.sum())) if not recent.empty else 0
+                    ttm_div = round(float(recent.sum())) if not recent.empty else 0
             except Exception:
                 pass
-
-            if latest_div == 0:
-                div_vals = cache[code].get("dividend", [])
-                latest_div = div_vals[-1] if div_vals else 0
 
             cache[code]["currentPrice"] = price
             cache[code]["priceDate"] = price_date
             cache[code]["pricesUpdatedAt"] = prices_updated_at
-            if latest_div > 0:
-                cache[code]["dividendYield"] = round(latest_div / price * 100, 2)
+            # 利回りは年間配当ベースを優先する。ここで TTM をそのまま採用すると
+            # ir-bank 補完で入れた年度ベースの値を毎日上書きしてしまう。
+            if ttm_div > 0:
+                cache[code]["dividendTTM"] = ttm_div
+            yld, basis = resolve_dividend_yield(cache[code], price, ttm_div)
+            if yld > 0:
+                cache[code]["dividendYield"] = yld
+                cache[code]["dividendYieldBasis"] = basis
             updated += 1
         except Exception:
             pass
@@ -1088,6 +1206,39 @@ def update_prices_only(cache):
 
     save_cache(cache)
     print(f"✅ 株価更新完了: {updated}/{total}")
+
+
+def recalc_dividend_yields(cache):
+    """ネットワークを使わず、キャッシュ済みの配当・株価から利回りを引き直す。
+    年間配当ベースへ移行した際の一括是正や、算出ロジックを変えたときの再適用用。
+    年度データが無い/古い銘柄は既存の TTM ベースの値をそのまま残す。"""
+    changed = 0
+    kept_ttm = 0
+    for code, entry in cache.items():
+        if not isinstance(entry, dict):
+            continue
+        price = entry.get("currentPrice") or 0
+        ttm = entry.get("dividendTTM") or 0
+        if not ttm and (entry.get("dividendYieldBasis") or "ttm") == "ttm":
+            # 過去の実行で入った利回りは TTM ベース。株価から実額を復元して突き合わせる
+            ttm = round((entry.get("dividendYield") or 0) * price / 100)
+        yld, basis = resolve_dividend_yield(entry, price, ttm)
+        if basis == "annual" and yld > 0:
+            if entry.get("dividendYield") != yld:
+                changed += 1
+            entry["dividendYield"] = yld
+            entry["dividendYieldBasis"] = "annual"
+        elif (entry.get("dividendYield") or 0) > DIVIDEND_YIELD_MAX:
+            # 配当データのパース異常（1株55000円など）で桁違いになっている値は落とす
+            entry["dividendYield"] = 0
+            entry["dividendYieldBasis"] = None
+            changed += 1
+        elif entry.get("dividendYield"):
+            # TTM の実数はキャッシュに無いので既存値を維持し、根拠だけ記録する
+            entry.setdefault("dividendYieldBasis", "ttm")
+            kept_ttm += 1
+    save_cache(cache)
+    print(f"✅ 配当利回り再計算: 年間配当ベース {changed}銘柄を更新 / TTMベース据え置き {kept_ttm}銘柄")
 
 
 def enrich_irbank(cache):
@@ -1126,14 +1277,16 @@ def enrich_irbank(cache):
                 cache[code]["dividendYears"]  = div_years_10
                 cache[code]["dividendStreak"] = consecutive_dividend_growth(div_vals_10)
                 cache[code]["noDividendCut"]  = has_no_dividend_cut(div_vals_10) if len(div_vals_10) >= 3 else None
-                # 配当利回りを最新確定値ベースで再計算
-                price = cache[code].get("currentPrice") or 0
-                # 末尾が None/0 のときは一つ前を採用（予想未確定対策）
-                latest_div = next((v for v in reversed(div_vals_10) if v), 0)
-                if price > 0 and latest_div > 0:
-                    yld = round(latest_div / price * 100, 2)
-                    if yld <= 100:
-                        cache[code]["dividendYield"] = yld
+                # 配当利回りを年間配当（最新確定年度）ベースで再計算。
+                # resolve_dividend_yield は irbank_enriched を見て年度データを
+                # 信用するか決めるので、先に立てておく。
+                cache[code]["irbank_enriched"] = True
+                yld, basis = resolve_dividend_yield(cache[code],
+                                                    cache[code].get("currentPrice") or 0,
+                                                    cache[code].get("dividendTTM") or 0)
+                if yld > 0:
+                    cache[code]["dividendYield"] = yld
+                    cache[code]["dividendYieldBasis"] = basis
 
             cache[code]["irbank_enriched"] = True
             enriched += 1
@@ -1267,6 +1420,7 @@ def main():
     fetch_limit = int(os.environ.get("FETCH_LIMIT") or 0) or None
     diag_code = os.environ.get("DIAG_IRBANK") or ""
     diag_price_codes = os.environ.get("DIAG_PRICES") or ""
+    do_recalc_yield = os.environ.get("RECALC_YIELD") == "1"
 
     if diag_price_codes:
         diag_prices([c.strip() for c in diag_price_codes.split(",") if c.strip()])
@@ -1274,6 +1428,13 @@ def main():
 
     if diag_code:
         diag_irbank(diag_code.strip())
+        return
+
+    if do_recalc_yield:
+        if not cache:
+            print("❌ 既存キャッシュなし。先にフルフェッチが必要です")
+            sys.exit(1)
+        recalc_dividend_yields(cache)
         return
 
     if update_only:

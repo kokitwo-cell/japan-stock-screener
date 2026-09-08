@@ -30,6 +30,7 @@ on:
           - full
           - irbank
           - irbank-force
+          - recalc-yield
           - summary
           - diag
           - diag-prices
@@ -88,6 +89,12 @@ jobs:
           ENRICH_IRBANK: '1'
           FORCE_IRBANK: '1'
           JQUANTS_REFRESH_TOKEN: ${{ secrets.JQUANTS_REFRESH_TOKEN }}
+        run: python scripts/update_data.py
+
+      - name: Recalculate dividend yields (no network)
+        if: github.event.inputs.mode == 'recalc-yield'
+        env:
+          RECALC_YIELD: '1'
         run: python scripts/update_data.py
 
       - name: Update data (business summary translation)

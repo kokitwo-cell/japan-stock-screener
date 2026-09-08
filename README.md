@@ -75,12 +75,21 @@
 │   └── jquants_info.json            # 日本語名・東証33業種（J-Quants由来）
 ├── scripts/
 │   ├── update_data.py               # データ更新スクリプト
+│   ├── test_dividend_yield.py       # 配当利回り算出ロジックの自己テスト
 │   ├── record_history.py            # ポートフォリオ評価額を history.json に日次記録
 │   └── requirements.txt
 └── .github/workflows/
     ├── deploy-pages.yml             # GitHub Pages 自動デプロイ
     └── update-data.yml              # データ更新（週次cron + 手動実行）
 ```
+
+## 配当利回りの算出
+
+**年間配当（会計年度ベース）÷ 現在株価** を原則としています。ir-bank から取得した年度別の1株配当のうち、直近の確定年度の年間配当を使います（進行中の年度は中間配当しか反映されていないことがあるため、前年から大きく落ちている場合は直前の確定年度を採用）。
+
+年度データを持たない銘柄（ETF・REIT、ir-bank 側で年度が古いまま／取得できていない銘柄）は、**直近12ヶ月に権利落ちした配当の合計（TTM）÷ 現在株価** で算出します。TTM は増配や中間配当の新設で12ヶ月の窓に権利落ちが3回入ると年間配当より多く合算され、利回りが高く出ることがあります（例: 3983 オロは年間配当50円に対しTTMが75円となり 3.8% と表示されていました。正しくは 50 ÷ 1,964 = 2.55%）。
+
+なお ir-bank の1株配当は株式分割の遡及調整がされておらず、中間配当だけを拾ってしまうケースもあるため、TTM が年間配当の 0.95〜1.9 倍に収まっているときだけ年間配当ベースを採用し、それ以外は TTM を残す安全策を入れています。どちらで算出されたかは各銘柄の `dividendYieldBasis`（`annual` / `ttm`）に記録され、カード・詳細モーダルの利回りにマウスを乗せると説明が出ます。
 
 ## データ更新
 
@@ -92,6 +101,7 @@ GitHubのActionsタブ → 「Update stock data」 → Run workflow から以下
 - `prices`  ... 株価のみ更新（数十分）
 - `full`    ... 全銘柄をyfinanceから取り直し（数時間、夜間推奨）
 - `irbank`  ... ir-bankからの長期業績補完（数時間）
+- `recalc-yield` ... 取得済みデータから配当利回りだけを引き直す（通信なし・数秒）
 
 ### ローカル
 ```bash
@@ -105,6 +115,12 @@ python scripts/update_data.py
 
 # ir-bank補完
 ENRICH_IRBANK=1 python scripts/update_data.py
+
+# 配当利回りだけ再計算（取得済みデータのみ使用・通信なし）
+RECALC_YIELD=1 python scripts/update_data.py
+
+# 配当利回りロジックの自己テスト
+python scripts/test_dividend_yield.py
 ```
 
 ## J-Quants APIキー（任意）
