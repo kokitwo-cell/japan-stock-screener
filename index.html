@@ -867,6 +867,26 @@ header .status-pill.error { color: var(--accent); }
     </div>
 
     <div class="filter-section">
+      <div class="filter-section-title">保有・メモ</div>
+      <div class="toggle-row" id="toggleHeldBtn" onclick="toggleListFilter('heldOnly')">
+        <span class="toggle-label">💼 保有中のみ表示</span>
+        <div class="toggle-switch" id="swHeld"></div>
+      </div>
+      <div class="toggle-row" id="toggleHeldExcludeBtn" onclick="toggleListFilter('heldExclude')">
+        <span class="toggle-label">💼 保有中を除いて表示</span>
+        <div class="toggle-switch" id="swHeldExclude"></div>
+      </div>
+      <div class="toggle-row" id="toggleNoteBtn" onclick="toggleListFilter('notedOnly')">
+        <span class="toggle-label">📝 メモありのみ表示</span>
+        <div class="toggle-switch" id="swNote"></div>
+      </div>
+      <div class="toggle-row" id="toggleNoteExcludeBtn" onclick="toggleListFilter('notedExclude')">
+        <span class="toggle-label">📝 メモありを除いて表示</span>
+        <div class="toggle-switch" id="swNoteExclude"></div>
+      </div>
+    </div>
+
+    <div class="filter-section">
       <div class="filter-section-title">DIVIDEND</div>
       <div class="input-wrap">
         <div class="input-label">配当利回り 下限（%）</div>
@@ -1406,6 +1426,18 @@ let noteStatusTimer = null;
 let noteEdited = false;
 let showWatchlistOnly = false;
 let hideWatchlist = false;
+// 保有の有無・メモの有無による絞り込み。
+// 各項目の「のみ表示」と「除いて表示」は排他（お気に入りのトグルと同じ振る舞い）。
+const listFilters = { heldOnly: false, heldExclude: false, notedOnly: false, notedExclude: false };
+const LIST_FILTER_UI = {
+  heldOnly:     { row: 'toggleHeldBtn',        sw: 'swHeld',        opposite: 'heldExclude' },
+  heldExclude:  { row: 'toggleHeldExcludeBtn', sw: 'swHeldExclude', opposite: 'heldOnly' },
+  notedOnly:    { row: 'toggleNoteBtn',        sw: 'swNote',        opposite: 'notedExclude' },
+  notedExclude: { row: 'toggleNoteExcludeBtn', sw: 'swNoteExclude', opposite: 'notedOnly' },
+};
+// 保有の増減はポートフォリオタブで行うため、保有で絞り込み中のときだけ
+// スクリーナータブに戻ったタイミングで再フィルタする（非表示中のチャート再描画を避ける）。
+let pendingHoldingRefresh = false;
 const miniCharts = {};
 const modalCharts = {};
 
@@ -1666,6 +1698,29 @@ function toggleWatchlistExcludeFilter() {
   document.getElementById('toggleWatchlistExcludeBtn').classList.toggle('active', hideWatchlist);
   document.getElementById('swWatchlistExclude').classList.toggle('on', hideWatchlist);
   applyFilters();
+}
+
+function toggleListFilter(key) {
+  const ui = LIST_FILTER_UI[key];
+  if (!ui) return;
+  listFilters[key] = !listFilters[key];
+  if (listFilters[key]) listFilters[ui.opposite] = false;
+  renderListFilterUI();
+  applyFilters();
+}
+
+function renderListFilterUI() {
+  for (const key in LIST_FILTER_UI) {
+    const { row, sw } = LIST_FILTER_UI[key];
+    document.getElementById(row)?.classList.toggle('active', listFilters[key]);
+    document.getElementById(sw)?.classList.toggle('on', listFilters[key]);
+  }
+}
+
+// 空白のみのメモは「メモなし」扱いとし、📝バッジと絞り込みの判定を揃える
+function hasNote(code) {
+  const note = stockNotes[code];
+  return !!(note && String(note).trim());
 }
 
 // スクリーニング条件とは無関係に、コードを指定した銘柄を直接モーダルで開く
@@ -1968,6 +2023,19 @@ function applyFilters() {
     filtered = filtered.filter(s => !watchlist.includes(s.code));
   }
 
+  if (listFilters.heldOnly || listFilters.heldExclude) {
+    const held = heldCodes();
+    filtered = listFilters.heldOnly
+      ? filtered.filter(s => held.has(s.code))
+      : filtered.filter(s => !held.has(s.code));
+  }
+
+  if (listFilters.notedOnly) {
+    filtered = filtered.filter(s => hasNote(s.code));
+  } else if (listFilters.notedExclude) {
+    filtered = filtered.filter(s => !hasNote(s.code));
+  }
+
   document.getElementById('progressLabel').textContent = `完了: ${filtered.length}社ヒット / ${allResults.length}社中`;
   document.getElementById('progressBar').style.width = '100%';
   setStatus('done', `完了 — ${filtered.length}社`);
@@ -2012,7 +2080,7 @@ function renderList(stocks) {
         <span class="star-btn ${watchlist.includes(s.code) ? 'active' : ''}" onclick="toggleWatchlist(event, '${s.code}')">★</span>
         <span class="code">${s.code}</span>
         <span class="name">
-          <span class="name-info">${s.jaName || s.name}${held.has(s.code) ? ' <span class="held-badge">保有中</span>' : ''}${stockNotes[s.code] ? ' <span class="note-badge" title="メモあり">📝</span>' : ''}<small>${s.s33Name || s.industry || s.sector || ''}</small></span>
+          <span class="name-info">${s.jaName || s.name}${held.has(s.code) ? ' <span class="held-badge">保有中</span>' : ''}${hasNote(s.code) ? ' <span class="note-badge" title="メモあり">📝</span>' : ''}<small>${s.s33Name || s.industry || s.sector || ''}</small></span>
           ${summary ? `<span class="name-summary" title="${summary.replace(/"/g, '&quot;')}">${summary}</span>` : ''}
         </span>
         <span class="val yield-val">${yld}${spike ? ` <span class="warn-icon" title="最新配当が前年(${spike.prev}円)から急増しています。特別・記念配当を含む可能性があり、通常時の利回りは約${spike.normalYield.toFixed(1)}%とみられます。">⚠</span>` : ''}</span>
@@ -2045,7 +2113,11 @@ function downloadCSV() {
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const suffix = showWatchlistOnly ? '_watchlist' : (hideWatchlist ? '_excl_watchlist' : '');
+  let suffix = showWatchlistOnly ? '_watchlist' : (hideWatchlist ? '_excl_watchlist' : '');
+  if (listFilters.heldOnly) suffix += '_held';
+  else if (listFilters.heldExclude) suffix += '_excl_held';
+  if (listFilters.notedOnly) suffix += '_noted';
+  else if (listFilters.notedExclude) suffix += '_excl_noted';
   a.href = url; a.download = `screening${suffix}_${new Date().toISOString().slice(0,10)}.csv`;
   a.click(); URL.revokeObjectURL(url);
 }
@@ -2123,7 +2195,7 @@ function cardHTML(s) {
       <div style="display:flex; gap:8px; align-items:flex-start">
         <div class="star-btn ${watchlist.includes(s.code) ? 'active' : ''}" onclick="toggleWatchlist(event, '${s.code}')" style="margin-top:2px;">★</div>
         <div>
-          <div style="display:flex; gap:6px; align-items:center;"><div class="code-chip">${s.code}</div>${held ? '<span class="held-badge">保有中</span>' : ''}${stockNotes[s.code] ? '<span class="note-badge" title="メモあり">📝</span>' : ''}</div>
+          <div style="display:flex; gap:6px; align-items:center;"><div class="code-chip">${s.code}</div>${held ? '<span class="held-badge">保有中</span>' : ''}${hasNote(s.code) ? '<span class="note-badge" title="メモあり">📝</span>' : ''}</div>
           <div class="stock-name" style="margin-top:6px">${s.jaName || s.name}</div>
           <div class="stock-industry">${s.s33Name || s.industry || s.sector || ''}</div>
         </div>
@@ -2660,6 +2732,12 @@ function setMainView(v) {
   document.getElementById('tabScreener').classList.toggle('active', v === 'screener');
   document.getElementById('tabPortfolio').classList.toggle('active', v === 'portfolio');
   if (v === 'portfolio') renderPortfolio();
+  // 保有の増減を反映した再フィルタは、スクリーナーを表示状態にしてから行う
+  // （非表示のままだとミニチャートがサイズ0で描画されてしまう）
+  if (v === 'screener' && pendingHoldingRefresh) {
+    pendingHoldingRefresh = false;
+    if (allResults.length) applyFilters();
+  }
 }
 
 async function loadPortfolio() {
@@ -2688,6 +2766,12 @@ async function loadPortfolio() {
 
 function savePF() {
   localStorage.setItem(PF_STORAGE_KEY, JSON.stringify(PORTFOLIO));
+  markHoldingChanged();
+}
+
+// 保有で絞り込み中の場合だけ、スクリーナー側の再フィルタを予約する
+function markHoldingChanged() {
+  if (listFilters.heldOnly || listFilters.heldExclude) pendingHoldingRefresh = true;
 }
 
 function buildStockDatalist() {
@@ -3254,6 +3338,7 @@ function resetPortfolio() {
   if (!confirm('保有データをデフォルト（data/portfolio.json）の内容に戻しますか？\nこのブラウザでの変更はすべて破棄されます。')) return;
   localStorage.removeItem(PF_STORAGE_KEY);
   PORTFOLIO = JSON.parse(JSON.stringify(DEFAULT_PF));
+  markHoldingChanged();
   clearSimulation();
 }
 
