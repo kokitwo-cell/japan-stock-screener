@@ -2138,7 +2138,7 @@ function cardHTML(s) {
       </div>
       <div class="metric-box">
         <div class="metric-lbl">配当利回り</div>
-        <div class="metric-val" style="color:${s.dividendYield>=3?'var(--accent2)':'inherit'}">${divYield}${spike ? ` <span class="warn-icon" title="最新配当が前年(${spike.prev}円)から急増。特別・記念配当を含む可能性があり、通常時利回りは約${spike.normalYield.toFixed(1)}%とみられます。">⚠</span>` : ''}</div>
+        <div class="metric-val" title="${yieldBasisNote(s)}" style="color:${s.dividendYield>=3?'var(--accent2)':'inherit'}">${divYield}${spike ? ` <span class="warn-icon" title="最新配当が前年(${spike.prev}円)から急増。特別・記念配当を含む可能性があり、通常時利回りは約${spike.normalYield.toFixed(1)}%とみられます。">⚠</span>` : ''}</div>
       </div>
       <div class="metric-box">
         <div class="metric-lbl">PER</div>
@@ -2357,8 +2357,9 @@ function openModal(code) {
       </div>
       <div class="modal-metric">
         <div class="modal-metric-lbl">配当利回り</div>
-        <div class="modal-metric-val ${s.dividendYield >= 3 ? 'green' : ''}">${s.dividendYield > 0 ? s.dividendYield.toFixed(1) + '%' : '—'}${modalSpike ? ` <span class="warn-icon" title="最新配当が前年(${modalSpike.prev}円)から急増。特別・記念配当を含む可能性があり、通常時利回りは約${modalSpike.normalYield.toFixed(1)}%とみられます。">⚠</span>` : ''}</div>
+        <div class="modal-metric-val ${s.dividendYield >= 3 ? 'green' : ''}" title="${yieldBasisNote(s)}">${s.dividendYield > 0 ? s.dividendYield.toFixed(1) + '%' : '—'}${modalSpike ? ` <span class="warn-icon" title="最新配当が前年(${modalSpike.prev}円)から急増。特別・記念配当を含む可能性があり、通常時利回りは約${modalSpike.normalYield.toFixed(1)}%とみられます。">⚠</span>` : ''}</div>
         ${modalSpike ? `<div style="font-family:var(--mono);font-size:9px;color:var(--warn);margin-top:3px;">⚠ 一時配当の可能性（通常時 約${modalSpike.normalYield.toFixed(1)}%）</div>` : ''}
+        ${s.dividendYield > 0 && s.dividendYieldBasis === 'ttm' ? `<div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:3px;">直近12ヶ月実績ベース</div>` : ''}
       </div>
       <div class="modal-metric">
         <div class="modal-metric-lbl">PER</div>
@@ -2599,6 +2600,26 @@ let PF_HISTORY = null;
 // 保有中の銘柄コード集合（スクリーナーの「保有中」バッジ用）
 function heldCodes() {
   return new Set((PORTFOLIO || []).map(h => h.code));
+}
+
+// 配当利回りの算出根拠（dividendYieldBasis）を人が読める説明にする。
+// annual: 会計年度の年間配当 ÷ 現在株価（原則こちら）
+// ttm   : 直近12ヶ月に権利落ちした配当の合計 ÷ 現在株価（年度データが無い/信頼できない銘柄）
+function yieldBasisNote(data) {
+  if (!data || !(data.dividendYield > 0)) return '';
+  const div = data.dividend || [];
+  const years = data.dividendYears || [];
+  if (data.dividendYieldBasis === 'annual') {
+    let i = div.length - 1;
+    while (i >= 0 && !(div[i] > 0)) i--;
+    const label = i >= 0 && years[i] ? `${years[i]}年度の年間配当 ${div[i]}円` : '直近の年間配当';
+    return `${label} ÷ 株価${data.currentPrice ? '¥' + data.currentPrice.toLocaleString() : ''} で算出`;
+  }
+  if (data.dividendYieldBasis === 'ttm') {
+    return '年度ごとの年間配当が取得できないため、直近12ヶ月に権利落ちした配当の合計 ÷ 株価 で算出。'
+         + '増配や中間配当の新設で権利落ちが12ヶ月に3回入ると高めに出ることがあります。';
+  }
+  return '';
 }
 
 // 最新配当が直近数年に対して急増している場合、特別配当・記念配当の一時的上振れの可能性ありと判定。
