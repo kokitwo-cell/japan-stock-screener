@@ -31,11 +31,13 @@ on:
           - irbank
           - irbank-force
           - recalc-yield
+          - normalize-splits
           - summary
           - diag
           - diag-prices
+          - diag-splits
       diag_code:
-        description: 'diag用銘柄コード(例: 7723)。diag-prices はカンマ区切り可(例: 7203,7994)'
+        description: 'diag用銘柄コード(例: 7723)。diag-prices / diag-splits はカンマ区切り可(例: 7203,7994)'
         required: false
         default: '7723'
         type: string
@@ -97,6 +99,12 @@ jobs:
           RECALC_YIELD: '1'
         run: python scripts/update_data.py
 
+      - name: Normalize split basis (dividend / EPS / yearly prices)
+        if: github.event.inputs.mode == 'normalize-splits'
+        env:
+          NORMALIZE_SPLITS: '1'
+        run: python scripts/update_data.py
+
       - name: Update data (business summary translation)
         if: github.event.schedule == '13 15 * * *' || github.event.inputs.mode == 'summary'
         env:
@@ -114,6 +122,14 @@ jobs:
         if: github.event.inputs.mode == 'diag-prices'
         env:
           DIAG_PRICES: ${{ github.event.inputs.diag_code }}
+        run: python scripts/update_data.py
+
+      - name: Diagnose split normalization (dry run, no commit)
+        if: github.event.inputs.mode == 'diag-splits'
+        env:
+          NORMALIZE_SPLITS: '1'
+          NORMALIZE_CODES: ${{ github.event.inputs.diag_code }}
+          NORMALIZE_DRY_RUN: '1'
         run: python scripts/update_data.py
 
       - name: Record portfolio history
