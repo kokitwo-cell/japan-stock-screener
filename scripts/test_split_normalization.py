@@ -144,6 +144,11 @@ mar_years = list(range(2018, 2027))
 mar_vals = [(10 + (y - 2018) * 3 + 1) + (10 + (y - 2017) * 3) for y in mar_years]  # 前年9月中間 + 当年3月期末
 check("決算月推定: 3月決算を当てる", infer_fiscal_year_end_month(mar_events, mar_years, mar_vals, [1.0, 2.0], today=TODAY), 3)
 check("決算月推定: 一致しなければ None", infer_fiscal_year_end_month([], mar_years, mar_vals, [1.0, 2.0], today=TODAY), None)
+# 中間・期末が同額で毎年横ばい → 3月と9月が同点。日本企業に多い3月を優先する
+flat_events = []
+for y in range(2017, 2027):
+    flat_events += [(date(y, 3, 29), 20), (date(y, 9, 28), 20)]
+check("決算月推定: 同点なら3月を優先", infer_fiscal_year_end_month(flat_events, mar_years, [40] * len(mar_years), [1.0], today=TODAY), 3)
 
 # マブチ型: EPS は決算短信の遡及修正分しか調整されないので、2026/1/1 の分割は全年度未調整
 # （2016〜2023 は 2024 分割のみ調整済み、2024〜2025 も 2026 分割は未調整＝株式数が現在の半分）

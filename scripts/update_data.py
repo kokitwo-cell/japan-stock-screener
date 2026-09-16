@@ -709,8 +709,10 @@ def unreported_split_factor(splits, years, fy_end_month=None, today=None):
 def infer_fiscal_year_end_month(div_events, years, values, candidates, today=None):
     """決算月が分からない銘柄向けに、ir-bank の年度配当と Yahoo 配当の突き合わせが
     最も多く成立する（一致した年度数が最大、同数なら誤差最小の）決算月を推定する。
+    半期配当だと6か月ずれた月がほぼ同点になるので、僅差なら日本企業に多い 3月 > 12月 > 9月 > 6月 を優先。
     2年度以上一致しなければ None"""
     import math
+    prior = {3: 4, 12: 3, 9: 2, 6: 1}
     best_m, best_key = None, None
     for m in range(1, 13):
         ref = yahoo_dividends_by_fiscal_year(div_events, years, m, today)
@@ -726,7 +728,7 @@ def infer_fiscal_year_end_month(div_events, years, values, candidates, today=Non
                         err += abs(math.log(ratio / f))
             except (TypeError, ValueError):
                 continue
-        key = (hits, -err)
+        key = (hits, -round(err, 1), prior.get(m, 0))
         if best_key is None or key > best_key:
             best_m, best_key = m, key
     if best_key is None or best_key[0] < 2:
