@@ -683,7 +683,10 @@ def normalize_dividend_basis(years, values, ref_by_year, candidates):
 
 def unreported_split_factor(splits, years, fy_end_month=None, today=None):
     """直近の「決算発表済み」年度の期末より後に効力が生じた分割の比の積。
-    ir-bank の EPS は決算短信で遡及修正された分しか分割調整されないため、この分は必ず未調整。"""
+    ir-bank の EPS は決算短信で遡及修正された分しか分割調整されないため、この分は必ず未調整。
+    Yahoo の分割日付は権利落ち日（効力発生日の数営業日前）なので、期初（1/1, 4/1, 10/1 …）に
+    効力が生じる分割は前期末の直前に載る。数日ずらして効力日ベースで判定する。"""
+    from datetime import timedelta
     if today is None:
         today = datetime.now(JST).date()
     reported_end = None
@@ -698,9 +701,37 @@ def unreported_split_factor(splits, years, fy_end_month=None, today=None):
         return 1.0
     factor = 1.0
     for d, r in splits or []:
-        if d > reported_end and r and float(r) > 0:
+        if d + timedelta(days=5) > reported_end and r and float(r) > 0:
             factor *= float(r)
     return factor
+
+
+def infer_fiscal_year_end_month(div_events, years, values, candidates, today=None):
+    """決算月が分からない銘柄向けに、ir-bank の年度配当と Yahoo 配当の突き合わせが
+    最も多く成立する（一致した年度数が最大、同数なら誤差最小の）決算月を推定する。
+    2年度以上一致しなければ None"""
+    import math
+    best_m, best_key = None, None
+    for m in range(1, 13):
+        ref = yahoo_dividends_by_fiscal_year(div_events, years, m, today)
+        hits, err = 0, 0.0
+        for y, v in zip(years or [], values or []):
+            r = ref.get(y)
+            try:
+                if v and r and float(v) > 0 and float(r) > 0:
+                    ratio = float(v) / float(r)
+                    f = match_factor(ratio, candidates)
+                    if f is not None:
+                        hits += 1
+                        err += abs(math.log(ratio / f))
+            except (TypeError, ValueError):
+                continue
+        key = (hits, -err)
+        if best_key is None or key > best_key:
+            best_m, best_key = m, key
+    if best_key is None or best_key[0] < 2:
+        return None
+    return best_m
 
 
 def normalize_eps_basis(years, eps_values, net_income_m_by_year, shares_now, candidates,
@@ -1572,9 +1603,17 @@ def apply_split_normalization(code, entry, ctx=None, today=None):
         today = datetime.now(JST).date()
     splits = sorted(ctx.get("splits") or [])
     candidates = split_factor_candidates(splits)
-    fy_month = entry.get("fyEndMonth")
     summary = {"code": code, "splits": [(d.isoformat(), r) for d, r in splits],
-               "shares": ctx.get("shares"), "dividend": {}, "eps": {}}
+               "shares": ctx.get("shares"), "dividend": {}, "eps": {}, "fyEndMonth": None}
+
+    # 決算月: ir-bank の年度ラベルから取れていればそれを、無ければ Yahoo 配当との突き合わせで推定
+    fy_month = entry.get("fyEndMonth")
+    if not fy_month and entry.get("dividendYears") and entry.get("dividend"):
+        fy_month = infer_fiscal_year_end_month(ctx.get("dividends") or [], entry["dividendYears"],
+                                               entry["dividend"], candidates, today)
+        if fy_month:
+            entry["fyEndMonthInferred"] = fy_month
+    summary["fyEndMonth"] = fy_month
 
     # 平均株価は毎回 Yahoo の調整済み終値から引き直す（分割後も配当と同じ基準に保つ）
     div_years = list(entry.get("dividendYears") or [])
@@ -1649,7 +1688,7 @@ def apply_split_normalization(code, entry, ctx=None, today=None):
 def _describe_split_summary(s):
     if s is None:
         return "Yahoo取得失敗"
-    parts = [f"分割{len(s['splits'])}件"]
+    parts = [f"分割{len(s['splits'])}件", f"決算月{s.get('fyEndMonth') or '?'}"]
     if s["dividend"]:
         parts.append("配当補正 " + " ".join(f"{y}:÷{f:g}" for y, f in s["dividend"].items()))
     if s["eps"]:

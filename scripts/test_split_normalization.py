@@ -15,6 +15,7 @@ import pandas as pd  # noqa: E402
 
 from update_data import (  # noqa: E402
     apply_split_normalization,
+    infer_fiscal_year_end_month,
     match_factor,
     normalize_dividend_basis,
     normalize_eps_basis,
@@ -130,6 +131,19 @@ check("EPS: 純利益なしでも未報告分割分は ÷2（予想年度も同�
 # 決算発表済みの年度内に効力が生じた分割は「未報告」ではない
 check("未報告分割: 期中の分割は短信で調整済み扱い",
       unreported_split_factor([(date(2025, 7, 1), 2.0)], [2024, 2025, 2026], fy_end_month=1, today=TODAY), 1.0)
+# Yahoo の分割日付は権利落ち日。1/1 効力の分割は 12/29 付で載るが、前期の短信では調整されない（マブチ 2026/1/1）
+check("未報告分割: 期末2日前の日付（翌期初効力）は未報告扱い",
+      unreported_split_factor([(date(2023, 12, 28), 2.0), (date(2025, 12, 29), 2.0)], list(range(2016, 2028)),
+                              fy_end_month=12, today=TODAY), 2.0)
+
+# 決算月の推定: 3月決算（9月末・3月末に権利落ち）で、暦年合算だと年度境界がずれて一致しない形
+mar_events = []
+for y in range(2017, 2027):
+    mar_events += [(date(y, 3, 29), 10 + (y - 2017) * 3), (date(y, 9, 28), 10 + (y - 2017) * 3 + 1)]
+mar_years = list(range(2018, 2027))
+mar_vals = [(10 + (y - 2018) * 3 + 1) + (10 + (y - 2017) * 3) for y in mar_years]  # 前年9月中間 + 当年3月期末
+check("決算月推定: 3月決算を当てる", infer_fiscal_year_end_month(mar_events, mar_years, mar_vals, [1.0, 2.0], today=TODAY), 3)
+check("決算月推定: 一致しなければ None", infer_fiscal_year_end_month([], mar_years, mar_vals, [1.0, 2.0], today=TODAY), None)
 
 # マブチ型: EPS は決算短信の遡及修正分しか調整されないので、2026/1/1 の分割は全年度未調整
 # （2016〜2023 は 2024 分割のみ調整済み、2024〜2025 も 2026 分割は未調整＝株式数が現在の半分）
