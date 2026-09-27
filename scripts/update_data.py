@@ -856,7 +856,10 @@ def fetch_stock_data(code, name_hint=""):
         div_years  = sorted(div_annual.keys())[-10:]
         div_values = [round(div_annual[y]) for y in div_years]
 
-        hist = ticker.history(period="10y")
+        # auto_adjust=False: Yahoo の Close は分割のみ調整済み（配当落ち分は差し引かない）。
+        # 既定の auto_adjust=True だと配当落ち分まで遡って差し引かれ、高配当株ほど過去の
+        # 株価が実際より低く出て「各年の平均株価ベースの利回り」が高めに見えてしまう。
+        hist = ticker.history(period="10y", auto_adjust=False)
         yearly_price_dict = {}
         if not hist.empty:
             hist['Year'] = hist.index.year
@@ -1551,10 +1554,14 @@ def _fetch_shares_outstanding(ticker):
 
 def fetch_split_context(code):
     """Yahoo から 10年分の履歴を1回取り、分割補正に必要な材料をまとめて返す。失敗時 None
-    closes: 調整済み終値 Series / dividends: [(権利落ち日, 金額)] / splits: [(効力日, 比率)] / shares: 発行済株式数"""
+    closes: 分割のみ調整した終値 Series（配当落ち調整なし） / dividends: [(権利落ち日, 金額)] /
+    splits: [(権利落ち日, 比率)] / shares: 発行済株式数
+    auto_adjust=False にするのは、既定だと終値が配当落ち分まで遡って差し引かれ、高配当株ほど
+    過去の平均株価が低く出て利回り推移がかさ上げされるため（5184 ニチリンで約1ポイント）。
+    Dividends / Stock Splits 列は auto_adjust の有無に関わらず同じ（Yahoo 側で分割調整済み）。"""
     try:
         ticker = yf.Ticker(f"{code}.T")
-        hist = ticker.history(period="10y")
+        hist = ticker.history(period="10y", auto_adjust=False)
     except Exception:
         return None
     if hist is None or hist.empty:
@@ -1627,7 +1634,7 @@ def apply_split_normalization(code, entry, ctx=None, today=None):
             entry["fyEndMonthInferred"] = fy_month
     summary["fyEndMonth"] = fy_month
 
-    # 平均株価は毎回 Yahoo の調整済み終値から引き直す（分割後も配当と同じ基準に保つ）
+    # 平均株価は毎回 Yahoo の終値（分割のみ調整）から引き直す（分割後も配当と同じ基準に保つ）
     if div_years and ctx.get("closes") is not None:
         entry["yearlyPrices"] = yearly_average_prices(ctx["closes"], div_years)
 
