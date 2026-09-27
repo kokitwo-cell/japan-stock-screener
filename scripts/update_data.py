@@ -15,6 +15,7 @@ GitHub Actions から週次で実行され、data/*.json を更新する。
   NORMALIZE_SPLITS       - "1" で株式分割による基準ずれ（配当・EPS・平均株価）を Yahoo 基準で補正
   NORMALIZE_CODES        - NORMALIZE_SPLITS の対象をカンマ区切りの銘柄コードに限定（詳細ログ付き）
   NORMALIZE_DRY_RUN      - "1" で補正結果を保存しない（診断用）
+  RESTORE_RAW_FROM       - NORMALIZE_SPLITS と併用。指定コミットの stock_cache.json を生データとして復元してから補正
 """
 
 import os
@@ -558,13 +559,19 @@ def resolve_dividend_yield(entry, price, ttm_dividend=0, ref_year=None):
 #  そこで Yahoo を基準に ir-bank の各年度値を補正し、配当・EPS・平均株価を同じ基準に揃える。
 #   - 配当: 年度ごとに Yahoo の配当（権利落ち日を決算期の窓で合算）と突き合わせる
 #   - EPS : 純利益 ÷ EPS ＝ その年度の株式数 を、現在の発行済株式数と突き合わせる。
-#           純利益が無い場合も、直近の決算発表より後に効力が生じた分割は必ず未調整なので
-#           その分だけは補正する
+#           純利益が無い場合は、ir-bank から取得した日より後に効力が生じた分割だけを補正する
+#           （取得元がまだ知り得なかった分割は必ず未調整。それ以前の分割は ir-bank 側で
+#            調整済みのことが多く、証拠なしに割ると二重調整になる）
+#   - 補正はいつも「取得したままの生データ」(basisRaw) から計算し直す。結果を上書きしても
+#     次回は生データから再計算されるので、何度走らせても二重に割られない
 #   - 倍率は分割履歴から作れる値（1, r1, r2, r1×r2, …）に限定し、Yahoo 側の欠測や重複計上で
 #     1年だけ外れた値は採用しない（隣り合う2年度が同じ倍率を示したときだけ倍率を変える）
 SPLIT_MATCH_TOL = 0.30          # 候補倍率との許容誤差（±30%）。分割比は最小でも1.5倍離れる
 SPLIT_MIN_NET_INCOME_M = 100    # EPS補正に使う純利益の下限（百万円）。小さいと丸め誤差が大きい
-SPLIT_REPORT_LAG_DAYS = 60      # 期末からこの日数が経っていれば決算発表済みとみなす
+SPLIT_EFFECTIVE_LAG_DAYS = 5    # Yahoo の分割日付（権利落ち日）から効力発生日までの余裕
+# ir-bank の取得日を記録し始める前のデータは、最後に全銘柄を取り直した 2026-06-20 のもの
+LEGACY_IRBANK_FETCH_DATE = "2026-06-20"
+BASIS_RAW_KEYS = ("dividend", "dividendYears", "eps", "epsYears", "epsValues")
 
 
 def split_factor_candidates(splits):
@@ -681,27 +688,21 @@ def normalize_dividend_basis(years, values, ref_by_year, candidates):
     return out, factors
 
 
-def unreported_split_factor(splits, years, fy_end_month=None, today=None):
-    """直近の「決算発表済み」年度の期末より後に効力が生じた分割の比の積。
-    ir-bank の EPS は決算短信で遡及修正された分しか分割調整されないため、この分は必ず未調整。
-    Yahoo の分割日付は権利落ち日（効力発生日の数営業日前）なので、期初（1/1, 4/1, 10/1 …）に
-    効力が生じる分割は前期末の直前に載る。数日ずらして効力日ベースで判定する。"""
-    from datetime import timedelta
-    if today is None:
-        today = datetime.now(JST).date()
-    reported_end = None
-    for y in years or []:
+def splits_after_fetch_factor(splits, fetched_on):
+    """ir-bank からデータを取得した日より後に効力が生じた分割の比の積。
+    取得元がまだ知り得なかった分割なので、この分は必ず未調整。
+    Yahoo の分割日付は権利落ち日（効力発生日の数営業日前）なので数日ずらして判定する。"""
+    from datetime import date, timedelta
+    if isinstance(fetched_on, str):
         try:
-            end = fiscal_year_end(y, fy_end_month)
-        except (TypeError, ValueError):
-            continue
-        if (today - end).days >= SPLIT_REPORT_LAG_DAYS and (reported_end is None or end > reported_end):
-            reported_end = end
-    if reported_end is None:
-        return 1.0
+            fetched_on = date.fromisoformat(fetched_on[:10])
+        except ValueError:
+            fetched_on = date.fromisoformat(LEGACY_IRBANK_FETCH_DATE)
+    if fetched_on is None:
+        fetched_on = date.fromisoformat(LEGACY_IRBANK_FETCH_DATE)
     factor = 1.0
     for d, r in splits or []:
-        if d + timedelta(days=5) > reported_end and r and float(r) > 0:
+        if d + timedelta(days=SPLIT_EFFECTIVE_LAG_DAYS) > fetched_on and r and float(r) > 0:
             factor *= float(r)
     return factor
 
@@ -736,18 +737,19 @@ def infer_fiscal_year_end_month(div_events, years, values, candidates, today=Non
     return best_m
 
 
-def normalize_eps_basis(years, eps_values, net_income_m_by_year, shares_now, candidates,
-                        floor_factor=1.0, floor_all_years=False, fy_end_month=None, today=None):
-    """ir-bank の年度EPSを現在の株式数基準に合わせる。(補正後の値, 年度ごとの倍率) を返す。
+def normalize_eps_basis(years, eps_values, net_income_m_by_year, shares_now, candidates, floor_factor=1.0):
+    """ir-bank の年度EPS（取得したままの生データ）を現在の株式数基準に合わせる。
+    (補正後の値, 年度ごとの倍率) を返す。
     純利益(百万円)÷EPS で当時の株式数を出し、現在の発行済株式数との比を分割比の積に丸める。
-    floor_factor は「必ず未調整」と分かっている倍率の下限（決算発表後の分割）。
-    floor_all_years=False なら発表済み年度にだけ適用し、予想年度は判定できなければ直近実績に揃える。"""
+    floor_factor は取得日より後に効力が生じた分割の比の積で、全年度に必ず掛かる下限
+    （Yahoo 側の発行済株式数が分割直後でまだ古くても取りこぼさない）。"""
     eps_values = list(eps_values or [])
     n = len(eps_values)
-    if n == 0 or len(years or []) != n or len(candidates or []) <= 1:
+    if n == 0 or len(years or []) != n:
         return eps_values, [1.0] * n
-    if today is None:
-        today = datetime.now(JST).date()
+    floor_factor = float(floor_factor or 1.0)
+    if len(candidates or []) <= 1 and floor_factor <= 1.0 + 1e-9:
+        return eps_values, [1.0] * n
     matched = []
     for y, e in zip(years, eps_values):
         f = None
@@ -762,21 +764,7 @@ def normalize_eps_basis(years, eps_values, net_income_m_by_year, shares_now, can
             f = None
         matched.append(f)
     factors = _resolve_basis_factors(matched, candidates)
-    if floor_factor and floor_factor > 1.0 + 1e-9:
-        newest_actual = None
-        for i, y in enumerate(years):
-            try:
-                is_actual = floor_all_years or (today - fiscal_year_end(y, fy_end_month)).days >= SPLIT_REPORT_LAG_DAYS
-            except (TypeError, ValueError):
-                is_actual = False
-            if is_actual:
-                newest_actual = i
-                if factors[i] < floor_factor - 1e-9:
-                    factors[i] = floor_factor
-        if newest_actual is not None:
-            for i in range(newest_actual + 1, n):
-                if matched[i] is None:
-                    factors[i] = factors[newest_actual]
+    factors = [max(f, floor_factor) for f in factors]
     out = [e if (e is None or abs(f - 1.0) < 1e-9) else round(float(e) / f, 2)
            for e, f in zip(eps_values, factors)]
     return out, factors
@@ -1594,8 +1582,20 @@ def fetch_split_context(code):
     }
 
 
+def _ensure_basis_raw(entry):
+    """補正の元になる「取得したままの生データ」を entry["basisRaw"] に確保して返す。
+    ir-bank 補完のたびに作り直され、無ければ現在の配列（未補正のはず）から作る。"""
+    raw = entry.get("basisRaw")
+    if not isinstance(raw, dict) or "fetchedAt" not in raw:
+        raw = {k: list(entry.get(k) or []) for k in BASIS_RAW_KEYS}
+        raw["fetchedAt"] = (entry.get("irbankFetchedAt") or LEGACY_IRBANK_FETCH_DATE)[:10]
+        entry["basisRaw"] = raw
+    return raw
+
+
 def apply_split_normalization(code, entry, ctx=None, today=None):
-    """1銘柄の配当・EPS・平均株価を現在の株式数基準に揃える（冪等）。
+    """1銘柄の配当・EPS・平均株価を現在の株式数基準に揃える。
+    いつも basisRaw（取得したままの生データ）から計算し直すので、何度走らせても結果は同じ。
     ctx が無ければ Yahoo から取得する。取得失敗時は None、それ以外は補正内容の要約 dict を返す。"""
     if ctx is None:
         ctx = fetch_split_context(code)
@@ -1605,78 +1605,75 @@ def apply_split_normalization(code, entry, ctx=None, today=None):
         today = datetime.now(JST).date()
     splits = sorted(ctx.get("splits") or [])
     candidates = split_factor_candidates(splits)
+    raw = _ensure_basis_raw(entry)
     summary = {"code": code, "splits": [(d.isoformat(), r) for d, r in splits],
-               "shares": ctx.get("shares"), "dividend": {}, "eps": {}, "fyEndMonth": None}
+               "shares": ctx.get("shares"), "dividend": {}, "eps": {}, "fyEndMonth": None,
+               "fetchedAt": raw.get("fetchedAt")}
+    for stale in ("epsBasisNormalized",):
+        entry.pop(stale, None)
+
+    div_years = list(raw.get("dividendYears") or [])
+    div_values = list(raw.get("dividend") or [])
+    eps_years = list(raw.get("epsYears") or [])
+    eps_values = list(raw.get("epsValues") or [])
+    eps_full = list(raw.get("eps") or [])
+    years = list(entry.get("years") or [])
 
     # 決算月: ir-bank の年度ラベルから取れていればそれを、無ければ Yahoo 配当との突き合わせで推定
     fy_month = entry.get("fyEndMonth")
-    if not fy_month and entry.get("dividendYears") and entry.get("dividend"):
-        fy_month = infer_fiscal_year_end_month(ctx.get("dividends") or [], entry["dividendYears"],
-                                               entry["dividend"], candidates, today)
+    if not fy_month and div_years and div_values:
+        fy_month = infer_fiscal_year_end_month(ctx.get("dividends") or [], div_years, div_values, candidates, today)
         if fy_month:
             entry["fyEndMonthInferred"] = fy_month
     summary["fyEndMonth"] = fy_month
 
     # 平均株価は毎回 Yahoo の調整済み終値から引き直す（分割後も配当と同じ基準に保つ）
-    div_years = list(entry.get("dividendYears") or [])
     if div_years and ctx.get("closes") is not None:
         entry["yearlyPrices"] = yearly_average_prices(ctx["closes"], div_years)
 
-    if len(candidates) > 1 and entry.get("irbank_enriched"):
-        div_values = list(entry.get("dividend") or [])
+    if entry.get("irbank_enriched"):
+        # 配当: Yahoo の年度別配当と突き合わせて倍率を決める（分割履歴が無ければ生データのまま）
         if div_values and len(div_values) == len(div_years):
-            ref = yahoo_dividends_by_fiscal_year(ctx.get("dividends") or [], div_years, fy_month, today)
-            new_vals, factors = normalize_dividend_basis(div_years, div_values, ref, candidates)
-            changed = {str(y): f for y, f, a, b in zip(div_years, factors, div_values, new_vals) if a != b}
-            if changed:
+            if len(candidates) > 1:
+                ref = yahoo_dividends_by_fiscal_year(ctx.get("dividends") or [], div_years, fy_month, today)
+                new_vals, factors = normalize_dividend_basis(div_years, div_values, ref, candidates)
+            else:
+                new_vals, factors = list(div_values), [1.0] * len(div_values)
+            summary["dividend"] = {str(y): f for y, f, a, b in zip(div_years, factors, div_values, new_vals) if a != b}
+            if entry.get("dividend") != new_vals:
                 entry["dividend"] = new_vals
                 entry["dividendStreak"] = consecutive_dividend_growth(new_vals)
                 entry["noDividendCut"] = has_no_dividend_cut(new_vals) if len(new_vals) >= 3 else None
-                summary["dividend"] = changed
 
-        years = list(entry.get("years") or [])
-        eps_years = list(entry.get("epsYears") or [])
-        eps_values = list(entry.get("epsValues") or [])
+        # EPS: 純利益÷EPS の株式数と現在株式数の比、および取得日以降の分割で補正
         if eps_years and len(eps_values) == len(eps_years):
             ni = entry.get("netIncomeM") or []
             ni_by_year = dict(zip(years, ni)) if ni and len(ni) == len(years) else {}
-            if entry.get("epsBasisNormalized"):
-                # 補正済みの系列: 前回以降に新しく効力が生じた分割だけは全年度が必ず未調整
-                seen = {s.get("date") for s in (entry.get("splits") or []) if isinstance(s, dict)}
-                floor = 1.0
-                for d, r in splits:
-                    if d.isoformat() not in seen:
-                        floor *= float(r)
-                floor_all = True
-            else:
-                # ir-bank から来たままの系列: 決算発表後に効力が生じた分割は必ず未調整
-                floor = unreported_split_factor(splits, years or eps_years, fy_month, today)
-                floor_all = False
+            floor = splits_after_fetch_factor(splits, raw.get("fetchedAt"))
             new_eps, factors = normalize_eps_basis(eps_years, eps_values, ni_by_year, ctx.get("shares"),
-                                                   candidates, floor_factor=floor, floor_all_years=floor_all,
-                                                   fy_end_month=fy_month, today=today)
-            changed = {str(y): f for y, f, a, b in zip(eps_years, factors, eps_values, new_eps) if a != b}
-            if changed:
+                                                   candidates, floor_factor=floor)
+            summary["eps"] = {str(y): f for y, f, a, b in zip(eps_years, factors, eps_values, new_eps) if a != b}
+            if entry.get("epsValues") != new_eps:
                 entry["epsValues"] = new_eps
-                fmap = dict(zip(eps_years, factors))
-                eps_full = entry.get("eps") or []
-                if eps_full and years and len(eps_full) == len(years):
-                    entry["eps"] = [None if v is None else
-                                    (v if abs(fmap.get(y, 1.0) - 1.0) < 1e-9 else round(float(v) / fmap[y], 2))
-                                    for y, v in zip(years, eps_full)]
                 entry["epsTrend"] = calc_trend(new_eps) if len(new_eps) >= 3 else {"slope": 0, "r2": 0, "growthRate": 0}
-                summary["eps"] = changed
-            entry["epsBasisNormalized"] = True
+            fmap = dict(zip(eps_years, factors))
+            if eps_full and years and len(eps_full) == len(years):
+                entry["eps"] = [None if v is None else
+                                (v if abs(fmap.get(y, 1.0) - 1.0) < 1e-9 else round(float(v) / fmap[y], 2))
+                                for y, v in zip(years, eps_full)]
 
     entry["splits"] = [{"date": d.isoformat(), "ratio": r} for d, r in splits]
     if ctx.get("shares"):
         entry["sharesOutstanding"] = int(ctx["shares"])
     if summary["dividend"] or summary["eps"]:
-        rec = entry.setdefault("splitAdjust", {})
+        rec = {}
         if summary["dividend"]:
             rec["dividend"] = summary["dividend"]
         if summary["eps"]:
             rec["eps"] = summary["eps"]
+        entry["splitAdjust"] = rec
+    else:
+        entry.pop("splitAdjust", None)
     entry["splitCheckedAt"] = datetime.now().isoformat()
 
     price = entry.get("currentPrice") or 0
@@ -1690,12 +1687,55 @@ def apply_split_normalization(code, entry, ctx=None, today=None):
 def _describe_split_summary(s):
     if s is None:
         return "Yahoo取得失敗"
-    parts = [f"分割{len(s['splits'])}件", f"決算月{s.get('fyEndMonth') or '?'}"]
+    parts = [f"分割{len(s['splits'])}件", f"決算月{s.get('fyEndMonth') or '?'}", f"取得日{s.get('fetchedAt') or '?'}"]
     if s["dividend"]:
         parts.append("配当補正 " + " ".join(f"{y}:÷{f:g}" for y, f in s["dividend"].items()))
     if s["eps"]:
         parts.append("EPS補正 " + " ".join(f"{y}:÷{f:g}" for y, f in s["eps"].items()))
     return " / ".join(parts)
+
+
+def _git_show_cache(sha):
+    """git 履歴上のコミット sha にある data/stock_cache.json を読む。浅い checkout なら取り寄せる"""
+    import subprocess
+    repo = os.path.dirname(DATA_DIR)
+    path = os.path.relpath(CACHE_FILE, repo)
+    for attempt in range(3):
+        r = subprocess.run(["git", "show", f"{sha}:{path}"], cwd=repo, capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout:
+            return json.loads(r.stdout)
+        if attempt == 0:
+            subprocess.run(["git", "fetch", "--depth=1", "origin", sha], cwd=repo, capture_output=True, text=True)
+        else:
+            subprocess.run(["git", "fetch", "--deepen=300", "origin", "main"], cwd=repo, capture_output=True, text=True)
+    raise RuntimeError(f"git show {sha}:{path} に失敗: {r.stderr.strip()[:200]}")
+
+
+def restore_basis_raw_from_snapshot(cache, sha):
+    """コミット sha 時点のキャッシュを「取得したままの生データ」とみなして basisRaw を作り直し、
+    配当・EPS 配列もその値に戻す（補正のやり直し用。株価などその他の項目は触らない）"""
+    snap = _git_show_cache(sha)
+    snap = snap.get("stocks", snap)
+    restored = 0
+    for code, entry in cache.items():
+        s = snap.get(code)
+        if not isinstance(entry, dict) or not isinstance(s, dict):
+            continue
+        raw = {k: list(s.get(k) or []) for k in BASIS_RAW_KEYS}
+        raw["fetchedAt"] = (s.get("irbankFetchedAt") or entry.get("irbankFetchedAt") or LEGACY_IRBANK_FETCH_DATE)[:10]
+        entry["basisRaw"] = raw
+        for k in BASIS_RAW_KEYS:
+            entry[k] = list(raw[k])
+        vals = entry.get("dividend") or []
+        entry["dividendStreak"] = consecutive_dividend_growth(vals)
+        entry["noDividendCut"] = has_no_dividend_cut(vals) if len(vals) >= 3 else None
+        ev = entry.get("epsValues") or []
+        entry["epsTrend"] = calc_trend(ev) if len(ev) >= 3 else {"slope": 0, "r2": 0, "growthRate": 0}
+        for stale in ("splitAdjust", "epsBasisNormalized"):
+            entry.pop(stale, None)
+        restored += 1
+    print(f"↩ 生データを {sha} 時点に復元: {restored}銘柄")
+    return restored
 
 
 def normalize_split_basis(cache, codes=None, verbose=False, dry_run=False):
@@ -1771,9 +1811,10 @@ def enrich_irbank(cache):
             cache[code]["netIncomeM"]   = result.get("netIncomeM") or []
             if result.get("fyEndMonth"):
                 cache[code]["fyEndMonth"] = result["fyEndMonth"]
-            # 取り直した生データなので分割補正の記録はリセット
-            cache[code]["epsBasisNormalized"] = False
+            cache[code]["irbankFetchedAt"] = datetime.now(JST).date().isoformat()
+            # 取り直した生データなので分割補正の記録はリセット（basisRaw は配当を入れた後に作る）
             cache[code].pop("splitAdjust", None)
+            cache[code].pop("basisRaw", None)
 
             # 配当（会計年度ベース、ir-bank 由来。yfinanceの暦年集計より正確）
             div_vals  = result.get("dividend", []) or []
@@ -1798,6 +1839,7 @@ def enrich_irbank(cache):
                     cache[code]["dividendYieldBasis"] = basis
 
             cache[code]["irbank_enriched"] = True
+            _ensure_basis_raw(cache[code])
             # 株式分割による基準ずれを Yahoo 基準で補正（配当・EPS・平均株価・利回り）
             s = apply_split_normalization(code, cache[code])
             if s and (s["dividend"] or s["eps"]):
@@ -1956,6 +1998,9 @@ def main():
         if not cache:
             print("❌ 既存キャッシュなし。先にフルフェッチが必要です")
             sys.exit(1)
+        restore_sha = (os.environ.get("RESTORE_RAW_FROM") or "").strip()
+        if restore_sha:
+            restore_basis_raw_from_snapshot(cache, restore_sha)
         normalize_split_basis(cache, normalize_codes or None, verbose=bool(normalize_codes),
                               dry_run=os.environ.get("NORMALIZE_DRY_RUN") == "1")
         return

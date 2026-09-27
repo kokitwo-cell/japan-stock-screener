@@ -41,6 +41,11 @@ on:
         required: false
         default: '7723'
         type: string
+      restore_sha:
+        description: 'normalize-splits / diag-splits 用。指定コミットの stock_cache.json を生データとして復元してから補正する（補正のやり直し用、通常は空）'
+        required: false
+        default: ''
+        type: string
 
 # 同じワークフローを同時に2本走らせない（後から来た run は待たせる）。
 # 2026-09-18 に normalize-splits と irbank-force を同時に手動実行したところ、先に終わった
@@ -112,6 +117,7 @@ jobs:
         if: github.event.inputs.mode == 'normalize-splits'
         env:
           NORMALIZE_SPLITS: '1'
+          RESTORE_RAW_FROM: ${{ github.event.inputs.restore_sha }}
         run: python scripts/update_data.py
 
       - name: Update data (business summary translation)
@@ -139,6 +145,7 @@ jobs:
           NORMALIZE_SPLITS: '1'
           NORMALIZE_CODES: ${{ github.event.inputs.diag_code }}
           NORMALIZE_DRY_RUN: '1'
+          RESTORE_RAW_FROM: ${{ github.event.inputs.restore_sha }}
         run: python scripts/update_data.py
 
       - name: Record portfolio history

@@ -20,7 +20,7 @@ from update_data import (  # noqa: E402
     normalize_dividend_basis,
     normalize_eps_basis,
     split_factor_candidates,
-    unreported_split_factor,
+    splits_after_fetch_factor,
     yahoo_dividends_by_fiscal_year,
     yearly_average_prices,
 )
@@ -114,27 +114,28 @@ check("配当: 最古の年度だけの不一致は無視", vals, [30, 30, 30])
 eps_years = [2024, 2025, 2026, 2027]
 eps_vals = [84.24, 98.99, 118.64, 117.74]
 ni = {2024: 900, 2025: 1060, 2026: 1270, 2027: 1260}
-new_eps, f = normalize_eps_basis(eps_years, eps_vals, ni, 21_400_000, C2, fy_end_month=1, today=TODAY)
+new_eps, f = normalize_eps_basis(eps_years, eps_vals, ni, 21_400_000, C2)
 check("EPS: 純利益ベースで全年度が分割前基準 → ÷2", new_eps, [42.12, 49.49, 59.32, 58.87])
 
 # 自社株買いで株式数が1割減っている程度なら 1 のまま
-new_eps, f = normalize_eps_basis([2024, 2025], [100.0, 110.0], {2024: 1000, 2025: 1100}, 9_000_000, C2, today=TODAY)
+new_eps, f = normalize_eps_basis([2024, 2025], [100.0, 110.0], {2024: 1000, 2025: 1100}, 9_000_000, C2)
 check("EPS: 株式数の1割差は無変更", new_eps, [100.0, 110.0])
 
-# 純利益が無くても、決算発表後に効力が生じた分割の分は必ず補正（発表済み年度＋予想年度）
-splits_2163 = [(date(2026, 8, 1), 2.0)]
-floor = unreported_split_factor(splits_2163, [2024, 2025, 2026, 2027], fy_end_month=1, today=TODAY)
-check("未報告分割: 2026年1月期発表後の 8/1 分割 → 2", floor, 2.0)
-new_eps, f = normalize_eps_basis(eps_years, eps_vals, {}, None, C2, floor_factor=floor, fy_end_month=1, today=TODAY)
-check("EPS: 純利益なしでも未報告分割分は ÷2（予想年度も同じ基準）", new_eps, [42.12, 49.49, 59.32, 58.87])
-
-# 決算発表済みの年度内に効力が生じた分割は「未報告」ではない
-check("未報告分割: 期中の分割は短信で調整済み扱い",
-      unreported_split_factor([(date(2025, 7, 1), 2.0)], [2024, 2025, 2026], fy_end_month=1, today=TODAY), 1.0)
-# Yahoo の分割日付は権利落ち日。1/1 効力の分割は 12/29 付で載るが、前期の短信では調整されない（マブチ 2026/1/1）
-check("未報告分割: 期末2日前の日付（翌期初効力）は未報告扱い",
-      unreported_split_factor([(date(2023, 12, 28), 2.0), (date(2025, 12, 29), 2.0)], list(range(2016, 2028)),
-                              fy_end_month=12, today=TODAY), 2.0)
+# 純利益が無くても、ir-bank から取得した日より後に効力が生じた分割は必ず未調整なので補正する
+splits_2163 = [(date(2026, 7, 30), 2.0)]  # Yahoo の日付は権利落ち日（効力は 8/1）
+floor = splits_after_fetch_factor(splits_2163, "2026-06-20")
+check("取得日以降の分割: 6/20 取得 → 8/1 効力の分割は 2", floor, 2.0)
+new_eps, f = normalize_eps_basis(eps_years, eps_vals, {}, None, C2, floor_factor=floor)
+check("EPS: 純利益なしでも取得日以降の分割分は ÷2（予想年度も同じ基準）", new_eps, [42.12, 49.49, 59.32, 58.87])
+check("取得日以降の分割: 取得より前の分割は数えない（三菱重工 2024/4 の10分割）",
+      splits_after_fetch_factor([(date(2017, 9, 27), 0.1), (date(2024, 3, 28), 10.0)], "2026-06-20"), 1.0)
+check("取得日以降の分割: 取得日の直前の権利落ち（効力は取得後）は数える",
+      splits_after_fetch_factor([(date(2026, 6, 17), 3.0)], "2026-06-20"), 3.0)
+check("取得日以降の分割: 取得日不明なら 2026-06-20 扱い",
+      splits_after_fetch_factor([(date(2026, 3, 30), 6.0)], None), 1.0)
+# 取得前の分割しか無く純利益も無ければ、EPS は触らない（ir-bank 側で調整済みのことが多い）
+new_eps, f = normalize_eps_basis([2015, 2016, 2017], [47.81, 32.9, 26.12], {}, 3_360_209_340, [0.1, 1.0, 10.0], floor_factor=1.0)
+check("EPS: 取得前の分割だけで証拠なし → 無変更", new_eps, [47.81, 32.9, 26.12])
 
 # 決算月の推定: 3月決算（9月末・3月末に権利落ち）で、暦年合算だと年度境界がずれて一致しない形
 mar_events = []
@@ -154,12 +155,12 @@ check("決算月推定: 同点なら3月を優先", infer_fiscal_year_end_month(
 # （2016〜2023 は 2024 分割のみ調整済み、2024〜2025 も 2026 分割は未調整＝株式数が現在の半分）
 m_eps = [40, 40, 45, 45, 45, 38, 45, 75.3, 50.5, 105.9]
 m_ni = {y: v for y, v in zip(m_years, [5300, 5300, 6000, 6000, 6000, 5000, 6000, 10000, 6700, 14000])}
-new_eps, f = normalize_eps_basis(m_years, m_eps, m_ni, 265_000_000, [1.0, 2.0, 4.0], today=TODAY)
+new_eps, f = normalize_eps_basis(m_years, m_eps, m_ni, 265_000_000, [1.0, 2.0, 4.0])
 check("EPS: マブチ型の倍率列（純利益÷EPS が全年度で現在の半分の株式数）", f, [2.0] * 10)
 check("EPS: マブチ型 2023 は 75.3→37.65、2024 は 50.5→25.25", (new_eps[7], new_eps[8]), (37.65, 25.25))
 # 古い年度だけ株式数が 1/4（2つの分割とも未調整）なら 4 で割る
 new_eps, f = normalize_eps_basis(m_years, [80, 80, 90, 90, 90, 76, 90, 150.6, 50.5, 105.9],
-                                 {**m_ni}, 265_000_000, [1.0, 2.0, 4.0], today=TODAY)
+                                 {**m_ni}, 265_000_000, [1.0, 2.0, 4.0])
 check("EPS: 古い年度だけ2段階未調整 → 4 と 2 が混在", f, [4.0] * 8 + [2.0, 2.0])
 
 # ------------------------------------------------------------------
@@ -202,13 +203,13 @@ check("2163: 現在利回りは 42÷953", (entry["dividendYield"], entry["divide
 check("2163: 補正記録", s["eps"], {"2024": 2.0, "2025": 2.0, "2026": 2.0, "2027": 2.0})
 # 2回目は何も変わらない（冪等）
 s2 = apply_split_normalization("2163", entry, ctx=ctx, today=TODAY)
-check("2163: 再実行で二重補正しない", (entry["epsValues"], s2["eps"], s2["dividend"]), ([42.12, 49.49, 59.32, 58.87], {}, {}))
+check("2163: 再実行で二重補正しない（生データから同じ倍率で計算し直すだけ）", (entry["epsValues"], s2["eps"], s2["dividend"]), ([42.12, 49.49, 59.32, 58.87], s["eps"], {}))
 # 補正済みの系列に、新しい分割（前回以降）が効力発生 → Yahoo の株式数がまだ古くても全年度 ÷2
 ctx2 = dict(ctx, splits=[(date(2026, 8, 1), 2.0), (date(2027, 2, 1), 2.0)])
 s3 = apply_split_normalization("2163", entry, ctx=ctx2, today=date(2027, 2, 2))
 check("2163: 前回以降の新規分割は株式数が未更新でも ÷2", entry["epsValues"], [21.06, 24.75, 29.66, 29.43])
 s4 = apply_split_normalization("2163", entry, ctx=ctx2, today=date(2027, 2, 3))
-check("2163: 新規分割の反映も1回きり", (entry["epsValues"], s4["eps"]), ([21.06, 24.75, 29.66, 29.43], {}))
+check("2163: 新規分割の反映も1回きり", (entry["epsValues"], s4["eps"]), ([21.06, 24.75, 29.66, 29.43], s3["eps"]))
 
 # ir-bank から取り直した直後（epsBasisNormalized=False）の花王型: 配当は全年度調整済み・EPS未調整
 kao = {
@@ -229,7 +230,29 @@ apply_split_normalization("4452", kao, ctx=kao_ctx, today=TODAY)
 check("花王: 配当は調整済みなので無変更", kao["dividend"], [75, 76, 77])
 check("花王: EPS は ÷2（純利益ベース）", kao["epsValues"], [47.0, 115.95, 130.15, 143.7])
 check("花王: 配当に変更が無ければ減配判定も触らない", ("noDividendCut" in kao, "dividendStreak" in kao), (False, False))
-check("花王: 補正後は補正済みフラグが立つ", kao.get("epsBasisNormalized"), True)
+check("花王: 生データが basisRaw に保存される", (kao["basisRaw"]["epsValues"], kao["basisRaw"]["fetchedAt"]), ([94.0, 231.9, 260.3, 287.4], "2026-06-20"))
+
+# 三菱重工型: 2024/4 の 10 分割は取得(6/20)より前で ir-bank 側で調整済み。純利益なし → 触らない
+mhi = {
+    "code": "7011", "irbank_enriched": True,
+    "years": [2014, 2015, 2016, 2017], "eps": [47.81, 32.9, 19.02, 26.12],
+    "epsYears": [2014, 2015, 2016, 2017], "epsValues": [47.81, 32.9, 19.02, 26.12],
+    "dividendYears": [2014, 2015, 2016, 2017], "dividend": [8, 11, 12, 12],
+    "currentPrice": 3000, "dividendTTM": 24,
+}
+mhi_ctx = {"closes": close_series([("2025-06-02", 3000)]), "dividends": [],
+           "splits": [(date(2017, 9, 27), 0.1), (date(2024, 3, 28), 10.0)], "shares": 3_360_209_340}
+apply_split_normalization("7011", mhi, ctx=mhi_ctx, today=TODAY)
+check("三菱重工: 取得前の分割だけなら EPS 無変更", mhi["epsValues"], [47.81, 32.9, 19.02, 26.12])
+check("三菱重工: 補正記録なし", "splitAdjust" in mhi, False)
+
+# 以前の誤補正で EPS が 1/10 になっていても、basisRaw を差し替えれば次の実行で元に戻る
+mhi_broken = dict(mhi, epsValues=[4.78, 3.29, 1.9, 2.61], eps=[4.78, 3.29, 1.9, 2.61])
+mhi_broken["basisRaw"] = {"dividend": [8, 11, 12, 12], "dividendYears": [2014, 2015, 2016, 2017],
+                          "eps": [47.81, 32.9, 19.02, 26.12], "epsYears": [2014, 2015, 2016, 2017],
+                          "epsValues": [47.81, 32.9, 19.02, 26.12], "fetchedAt": "2026-06-20"}
+apply_split_normalization("7011", mhi_broken, ctx=mhi_ctx, today=TODAY)
+check("三菱重工: 生データから計算し直して誤補正が解消", mhi_broken["epsValues"], [47.81, 32.9, 19.02, 26.12])
 
 print("-" * 50)
 if failed:
