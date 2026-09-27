@@ -42,6 +42,15 @@ on:
         default: '7723'
         type: string
 
+# 同じワークフローを同時に2本走らせない（後から来た run は待たせる）。
+# 2026-09-18 に normalize-splits と irbank-force を同時に手動実行したところ、先に終わった
+# normalize-splits の結果(3,529銘柄の分割補正)を、古いキャッシュを持ったまま後で終わった
+# irbank-force が push 衝突→rebase(theirs優先)で丸ごと上書きして消してしまった。
+# data/*.json はファイル単位で衝突するため、直列化する以外に安全な方法がない。
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -138,6 +147,8 @@ jobs:
 
       - name: Commit and push changes
         if: "!startsWith(github.event.inputs.mode, 'diag')"
+        # 上の concurrency で run は直列化されるので、ここで push が弾かれるのは
+        # 手動コミットなど workflow 以外の更新が挟まった場合だけになる。
         run: |
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
