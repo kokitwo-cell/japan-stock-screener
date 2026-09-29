@@ -571,6 +571,7 @@ SPLIT_MIN_NET_INCOME_M = 100    # EPS補正に使う純利益の下限（百万�
 SPLIT_EFFECTIVE_LAG_DAYS = 5    # Yahoo の分割日付（権利落ち日）から効力発生日までの余裕
 # ir-bank の取得日を記録し始める前のデータは、最後に全銘柄を取り直した 2026-06-20 のもの
 LEGACY_IRBANK_FETCH_DATE = "2026-06-20"
+SPLIT_TTM_STALE_DAYS = 45       # 分割効力後、Yahoo の配当(TTM)の分割調整が遅れ得る期間
 BASIS_RAW_KEYS = ("dividend", "dividendYears", "eps", "epsYears", "epsValues")
 
 
@@ -705,6 +706,39 @@ def splits_after_fetch_factor(splits, fetched_on):
         if d + timedelta(days=SPLIT_EFFECTIVE_LAG_DAYS) > fetched_on and r and float(r) > 0:
             factor *= float(r)
     return factor
+
+
+def adjust_stale_ttm(entry, ttm, today=None):
+    """分割の直後は Yahoo の株価が先に分割調整され、配当（TTM）の調整が数日遅れることがある。
+    その間は「分割後の株価 ÷ 分割前の TTM」で利回りが分割比倍に跳ねる（7988 ニフコ: 2.3%→4.6%）。
+    直近 SPLIT_TTM_STALE_DAYS 日以内の分割比の積と TTM÷年間配当 がほぼ一致していれば、
+    TTM は未調整とみなして分割比で割る。それ以外は TTM をそのまま返す。"""
+    from datetime import date
+    try:
+        ttm = float(ttm or 0)
+    except (TypeError, ValueError):
+        return ttm
+    if ttm <= 0:
+        return ttm
+    if today is None:
+        today = datetime.now(JST).date()
+    recent = 1.0
+    for sp in entry.get("splits") or []:
+        try:
+            d = date.fromisoformat(str(sp.get("date"))[:10])
+            r = float(sp.get("ratio") or 0)
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if r > 0 and 0 <= (today - d).days <= SPLIT_TTM_STALE_DAYS:
+            recent *= r
+    if abs(recent - 1.0) < 1e-9:
+        return ttm
+    annual, _ = latest_annual_dividend(entry.get("dividend"), entry.get("dividendYears"), today.year)
+    if not annual or annual <= 0:
+        return ttm
+    if match_factor(ttm / float(annual), [1.0, recent], tol=0.15) == recent:
+        return round(ttm / recent)
+    return ttm
 
 
 def infer_fiscal_year_end_month(div_events, years, values, candidates, today=None):
@@ -1475,6 +1509,8 @@ def update_prices_only(cache):
             cache[code]["pricesUpdatedAt"] = prices_updated_at
             # 利回りは年間配当ベースを優先する。ここで TTM をそのまま採用すると
             # ir-bank 補完で入れた年度ベースの値を毎日上書きしてしまう。
+            # 分割直後で Yahoo の配当だけ未調整なら、分割比で割ってから使う
+            ttm_div = adjust_stale_ttm(cache[code], ttm_div)
             if ttm_div > 0:
                 cache[code]["dividendTTM"] = ttm_div
             yld, basis = resolve_dividend_yield(cache[code], price, ttm_div)
@@ -1683,6 +1719,8 @@ def apply_split_normalization(code, entry, ctx=None, today=None):
         entry.pop("splitAdjust", None)
     entry["splitCheckedAt"] = datetime.now().isoformat()
 
+    if entry.get("dividendTTM"):
+        entry["dividendTTM"] = adjust_stale_ttm(entry, entry["dividendTTM"], today=today)
     price = entry.get("currentPrice") or 0
     yld, basis = resolve_dividend_yield(entry, price, entry.get("dividendTTM") or 0)
     if yld > 0:
