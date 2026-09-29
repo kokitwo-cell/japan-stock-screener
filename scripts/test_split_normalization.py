@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pandas as pd  # noqa: E402
 
 from update_data import (  # noqa: E402
+    adjust_stale_ttm,
     apply_split_normalization,
     infer_fiscal_year_end_month,
     match_factor,
@@ -253,6 +254,30 @@ mhi_broken["basisRaw"] = {"dividend": [8, 11, 12, 12], "dividendYears": [2014, 2
                           "epsValues": [47.81, 32.9, 19.02, 26.12], "fetchedAt": "2026-06-20"}
 apply_split_normalization("7011", mhi_broken, ctx=mhi_ctx, today=TODAY)
 check("三菱重工: 生データから計算し直して誤補正が解消", mhi_broken["epsValues"], [47.81, 32.9, 19.02, 26.12])
+
+# ------------------------------------------------------------------
+# 分割直後の TTM（Yahoo の配当調整が株価より遅れる）
+# ------------------------------------------------------------------
+nifco = {"splits": [{"date": "2026-09-29", "ratio": 2.0}, {"date": "2018-03-28", "ratio": 2.0}],
+         "dividend": [32, 38, 55], "dividendYears": [2024, 2025, 2026]}
+check("TTM: 分割直後に TTM が年間配当の分割比倍なら割る（7988）", adjust_stale_ttm(nifco, 110, today=date(2026, 9, 30)), 55)
+check("TTM: 分割から45日超なら触らない", adjust_stale_ttm(nifco, 110, today=date(2026, 12, 1)), 110)
+check("TTM: 重複合算(1.5倍)は分割比と一致しないので触らない", adjust_stale_ttm(nifco, 82, today=date(2026, 9, 30)), 82)
+check("TTM: 分割履歴なしなら触らない", adjust_stale_ttm({"dividend": [55], "dividendYears": [2026]}, 110, today=date(2026, 9, 30)), 110)
+nifco_entry = {
+    "code": "7988", "irbank_enriched": True, "fyEndMonth": 3,
+    "years": [2025, 2026], "eps": [461.94, 361.43], "epsYears": [2025, 2026], "epsValues": [461.94, 361.43],
+    "dividendYears": [2024, 2025, 2026], "dividend": [32, 38, 55],
+    "basisRaw": {"dividend": [32, 38, 55], "dividendYears": [2024, 2025, 2026], "eps": [461.94, 361.43],
+                 "epsYears": [2025, 2026], "epsValues": [461.94, 361.43], "fetchedAt": "2026-06-20"},
+    "currentPrice": 2387, "dividendTTM": 110,
+}
+nifco_ctx = {"closes": close_series([("2026-06-02", 2400)]),
+             "dividends": [(date(2025, 9, 26), 16), (date(2026, 3, 27), 22), (date(2026, 9, 25), 27)],
+             "splits": [(date(2018, 3, 28), 2.0), (date(2026, 9, 29), 2.0)], "shares": 93_000_000}
+apply_split_normalization("7988", nifco_entry, ctx=nifco_ctx, today=date(2026, 9, 30))
+check("7988: 分割直後の現在利回りは年間配当ベース 55÷2387", (nifco_entry["dividendTTM"], nifco_entry["dividendYield"], nifco_entry["dividendYieldBasis"]), (55, 2.3, "annual"))
+check("7988: 取得日以降の分割なので EPS は ÷2", nifco_entry["epsValues"], [230.97, 180.72])
 
 print("-" * 50)
 if failed:
