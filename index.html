@@ -778,6 +778,168 @@ header .status-pill.error { color: var(--accent); }
   header { padding: 0 16px; }
   .main { padding: 20px 16px; }
 }
+
+/* ===== MOBILE（768px以下のみ。PC表示には影響しない） ===== */
+.m-only { display: none; }
+.drawer-backdrop { display: none; }
+
+@media (max-width: 768px) {
+  .m-only { display: revert; }
+  body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+
+  /* ヘッダー: ロゴ文字を省略し、タブは画面下部のナビへ */
+  header { height: 50px; padding: 0 12px; }
+  header .logo-text { display: none; }
+  header .status-pill { font-size: 10px; padding: 4px 10px; max-width: 70vw; overflow: hidden; white-space: nowrap; }
+  .header-tabs {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    z-index: 120;
+    background: var(--ink);
+    border-top: 3px solid var(--accent);
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    gap: 6px;
+  }
+  .tab-btn { flex: 1; padding: 11px 6px; font-size: 13px; letter-spacing: 1px; }
+
+  /* サイドバー → 左からのドロワー */
+  .layout { display: block; min-height: auto; }
+  .layout .sidebar {
+    position: fixed; top: 0; bottom: 0; left: 0;
+    width: min(88vw, 360px);
+    z-index: 150;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding: 0 18px calc(24px + env(safe-area-inset-bottom));
+    border-right: 1px solid var(--border);
+    border-bottom: none;
+    transform: translateX(-102%);
+    transition: transform 0.25s ease;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.18);
+  }
+  body.drawer-open .layout .sidebar { transform: translateX(0); }
+  .layout .sidebar > * { flex-shrink: 0; }
+  body.drawer-open { overflow: hidden; }
+  .drawer-backdrop {
+    display: block;
+    position: fixed; inset: 0;
+    background: rgba(26,24,20,0.5);
+    z-index: 140;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  body.drawer-open .drawer-backdrop { opacity: 1; pointer-events: auto; }
+  .drawer-head {
+    display: flex !important; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 2;
+    background: var(--panel);
+    padding: 14px 0 10px;
+    margin-bottom: -6px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono); font-size: 12px; letter-spacing: 2px; color: var(--ink2);
+  }
+  .drawer-close {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 14px; font-family: var(--mono); font-size: 12px; color: var(--ink2); cursor: pointer;
+  }
+
+  /* 条件ボタン（フローティング） */
+  .drawer-fab {
+    display: flex !important; align-items: center; gap: 6px;
+    position: fixed;
+    right: 14px; bottom: calc(76px + env(safe-area-inset-bottom));
+    z-index: 110;
+    background: var(--accent); color: #fff;
+    border: none; border-radius: 26px;
+    padding: 13px 18px;
+    font-family: var(--sans); font-size: 14px; font-weight: 700;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+    cursor: pointer;
+  }
+
+  /* タップしやすいサイズ & iOSの自動ズーム防止（16px） */
+  .inp, .filter-select, select.inp { font-size: 16px; }
+  .inp-sm { font-size: 16px; padding: 7px 8px; }
+  .toggle-row { padding: 12px; }
+  .sort-btn { padding: 8px 12px; font-size: 12px; }
+
+  /* 結果バー: 縦積み + 並び替えは横スクロール */
+  .main { padding: 14px 12px 84px; }
+  .result-bar { flex-direction: column; align-items: stretch; gap: 12px; margin-bottom: 14px; }
+  .result-bar > div:nth-child(2) { flex-direction: column; align-items: stretch !important; gap: 10px !important; }
+  .result-bar > div:nth-child(2) > div:not(.sort-bar) { width: 100%; }
+  #codeSearchInput { flex: 1; width: auto !important; }
+  #s33Filter { flex: 1; padding: 8px; }
+  .sort-bar {
+    overflow-x: auto; flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+  .sort-bar::-webkit-scrollbar { display: none; }
+  .sort-bar > * { flex-shrink: 0; white-space: nowrap; }
+  #pfSourceNote { text-align: left !important; }
+
+  /* リスト表示: 2段組のコンパクト行 */
+  .list-view .list-header { display: none; }
+  .list-view .list-row {
+    grid-template-columns: 28px repeat(4, 1fr) auto;
+    grid-template-areas:
+      "star name  name  name  name  yield"
+      "star code  price per   pbr   streak";
+    row-gap: 4px;
+    column-gap: 6px;
+    padding: 12px 12px;
+  }
+  .list-view .list-row > :nth-child(1) { grid-area: star; align-self: center; font-size: 20px; }
+  .list-view .list-row > :nth-child(2) { grid-area: code; font-size: 11px; }
+  .list-view .list-row > :nth-child(3) { grid-area: name; }
+  .list-view .list-row > :nth-child(4) { grid-area: yield; font-size: 16px; align-self: center; }
+  .list-view .list-row > :nth-child(5) { grid-area: price; }
+  .list-view .list-row > :nth-child(6) { grid-area: per; }
+  .list-view .list-row > :nth-child(7) { grid-area: pbr; }
+  .list-view .list-row > :nth-child(8) { grid-area: streak; }
+  .list-view .list-row > :nth-child(n+5) { font-size: 11px; text-align: left; color: var(--ink2); white-space: nowrap; }
+  .list-view .list-row > :nth-child(6)::before { content: 'PER '; color: var(--ink3); }
+  .list-view .list-row > :nth-child(7)::before { content: 'PBR '; color: var(--ink3); }
+  .list-view .list-row > :nth-child(8) { text-align: right; color: var(--accent3); }
+  .list-view .list-row .name-info { flex-shrink: 1; min-width: 0; font-size: 14px; }
+  .list-view .list-row .name-summary { display: none; }
+
+  /* カード表示 */
+  .card-grid { grid-template-columns: 1fr; gap: 12px; }
+  .stock-card { padding: 14px; }
+  .mini-charts > * { min-width: 0; }
+  .stock-card:hover { transform: none; box-shadow: none; }
+
+  /* 詳細モーダル: 全画面 */
+  .modal-overlay { padding: 0; align-items: stretch; }
+  .modal { max-width: none; max-height: none; height: 100%; height: 100dvh; border-radius: 0; border: none; }
+  .modal-header-fixed { padding: 12px 14px 12px; }
+  .modal-header-fixed > div:first-child { flex-direction: column; align-items: flex-start !important; gap: 8px; }
+  .modal-header-fixed > div:first-child > div:first-child { flex-wrap: wrap; gap: 6px !important; padding-right: 80px; }
+  .modal-header-fixed > div:first-child > div:last-child { padding-right: 0 !important; width: 100%; }
+  .modal-header-fixed .nav-btn { flex: 1; padding: 8px 10px; font-size: 12px; }
+  .modal-close { top: 10px; right: 10px; padding: 8px 12px; }
+  .modal-name { font-size: 18px; }
+  .modal-body-scroll { padding: 14px 14px calc(28px + env(safe-area-inset-bottom)); }
+  .modal-metrics { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 20px; }
+  .modal-metric { padding: 10px 12px; }
+  .modal-metric-val { font-size: 16px; }
+  .modal-note-input { font-size: 16px; }
+  .full-chart-wrap { height: 180px; }
+
+  /* ポートフォリオ */
+  .pf-tiles { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .pf-tile { padding: 12px; }
+  .pf-tile-val { font-size: 17px; }
+  .pf-chart-box { padding: 12px; }
+  .pf-donut-flex { justify-content: center; }
+  .pf-legend.two-col { grid-template-columns: 1fr; }
+  .pf-bar-wrap { height: 280px; }
+  .pf-table-scroll { -webkit-overflow-scrolling: touch; }
+  .sim-compare-grid { grid-template-columns: repeat(2, 1fr); }
+}
 </style>
 </head>
 <body>
@@ -785,7 +947,7 @@ header .status-pill.error { color: var(--accent); }
 <header>
   <div class="logo">
     <div class="logo-mark">株</div>
-    JAPAN STOCK SCREENER
+    <span class="logo-text">JAPAN STOCK SCREENER</span>
   </div>
   <div class="header-tabs">
     <button class="tab-btn active" id="tabScreener" onclick="setMainView('screener')">🔍 スクリーナー</button>
@@ -799,6 +961,7 @@ header .status-pill.error { color: var(--accent); }
 
 <div class="layout" id="screenerLayout">
   <aside class="sidebar">
+    <div class="drawer-head m-only"><span>🔧 条件・設定</span><button class="drawer-close" onclick="closeDrawer()">✕ 閉じる</button></div>
     <div class="sidebar-title">DATA</div>
 
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:11px;color:var(--ink3)">
@@ -1186,6 +1349,7 @@ header .status-pill.error { color: var(--accent); }
 
 <div class="layout" id="portfolioLayout" style="display:none">
   <aside class="sidebar">
+    <div class="drawer-head m-only"><span>🧮 シミュレーション・保有</span><button class="drawer-close" onclick="closeDrawer()">✕ 閉じる</button></div>
     <div class="sidebar-title">SIMULATION</div>
 
     <div class="filter-section">
@@ -1284,6 +1448,9 @@ header .status-pill.error { color: var(--accent); }
     </div>
   </main>
 </div>
+
+<div class="drawer-backdrop" onclick="closeDrawer()"></div>
+<button class="drawer-fab m-only" id="drawerFab" onclick="openDrawer()">🔧 <span id="drawerFabLabel">条件</span></button>
 
 <div class="modal-overlay" id="modal" style="display:none" onclick="closeModal(event)">
   <div class="modal" id="modalContent">
@@ -1766,6 +1933,7 @@ function copyCode(text, el) {
 
 // ===== CLIENT-SIDE SCREENING =====
 function runScreen() {
+  closeDrawer();
   const btn = document.getElementById('runBtn');
   btn.disabled = true;
 
@@ -2727,8 +2895,11 @@ const fmtPct = (n, d = 2) => n.toFixed(d) + '%';
 
 function setMainView(v) {
   mainView = v;
-  document.getElementById('screenerLayout').style.display = v === 'screener' ? 'grid' : 'none';
-  document.getElementById('portfolioLayout').style.display = v === 'portfolio' ? 'grid' : 'none';
+  document.getElementById('screenerLayout').style.display = v === 'screener' ? '' : 'none';
+  document.getElementById('portfolioLayout').style.display = v === 'portfolio' ? '' : 'none';
+  closeDrawer();
+  document.getElementById('drawerFabLabel').textContent = v === 'portfolio' ? 'シミュレーション' : '条件';
+  window.scrollTo(0, 0);
   document.getElementById('tabScreener').classList.toggle('active', v === 'screener');
   document.getElementById('tabPortfolio').classList.toggle('active', v === 'portfolio');
   if (v === 'portfolio') renderPortfolio();
@@ -3469,6 +3640,12 @@ window.addEventListener('load', async () => {
   await loadStaticData();
   await loadPortfolio();
 });
+
+// ===== モバイル: サイドバーをドロワーとして開閉 =====
+function openDrawer() { document.body.classList.add('drawer-open'); }
+function closeDrawer() { document.body.classList.remove('drawer-open'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+window.matchMedia('(max-width: 768px)').addEventListener('change', e => { if (!e.matches) closeDrawer(); });
 
 function showSkeletons() {
   const grid = document.getElementById('cardGrid');
