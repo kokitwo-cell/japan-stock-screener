@@ -1968,6 +1968,8 @@ function runScreen() {
     const cycInd = industries.filter(i => sectorSensitivity(i) === 'cyclical');
     const opts = list => list.map(i => `<option value="${i}">${i}</option>`).join('');
     select.innerHTML = '<option value="">全業種</option>'
+      + (defInd.length ? '<option value="__defensive__">🛡 ディフェンシブ全部</option>' : '')
+      + (cycInd.length ? '<option value="__cyclical__">📈 景気敏感全部</option>' : '')
       + (defInd.length ? `<optgroup label="🛡 ディフェンシブ">${opts(defInd)}</optgroup>` : '')
       + (cycInd.length ? `<optgroup label="📈 景気敏感">${opts(cycInd)}</optgroup>` : '');
 
@@ -2183,7 +2185,12 @@ function applyFilters() {
   const s33 = document.getElementById('s33Filter')?.value || '';
   let filtered = allResults;
 
-  if (s33) filtered = filtered.filter(s => s.s33Name === s33);
+  if (s33 === '__defensive__' || s33 === '__cyclical__') {
+    const sens = s33 === '__defensive__' ? 'defensive' : 'cyclical';
+    filtered = filtered.filter(s => s.s33Name && sectorSensitivity(s.s33Name) === sens);
+  } else if (s33) {
+    filtered = filtered.filter(s => s.s33Name === s33);
+  }
 
   if (showWatchlistOnly) {
     filtered = filtered.filter(s => watchlist.includes(s.code));
