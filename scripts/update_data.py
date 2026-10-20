@@ -487,6 +487,56 @@ def latest_annual_dividend(div_values, div_years, ref_year=None):
     return div_values[idx], div_years[idx]
 
 
+def completed_dividends(values, years, calendar_year=False, ref_year=None):
+    """減配・連続増配の判定に使う配当系列（進行中の年度を除いたもの）を返す。
+    進行中の年度は配当が出揃っておらず、前年より小さく見えて減配と誤判定される
+    （例: 8306 三菱UFJ は暦年集計で 2025年74円・2026年39円＝6月の期末分のみ）。
+      - calendar_year=True: yfinance の暦年集計。当年は年末まで必ず未確定なので常に除く
+      - 会計年度ベース(ir-bank): 前年から大きく落ちた進行中年度だけを期中の部分値として除く
+    """
+    values = list(values or [])
+    years = list(years or [])
+    if not values or len(values) != len(years):
+        return values
+    if ref_year is None:
+        ref_year = datetime.now(JST).year
+    if years[-1] < ref_year:
+        return values
+    if calendar_year:
+        return values[:-1]
+    prev = _last_positive_index(values, len(values) - 1)
+    if (prev is not None
+            and years[-1] - years[prev] <= 1
+            and values[-1] < values[prev] * PARTIAL_YEAR_RATIO):
+        return values[:-1]
+    return values
+
+
+def dividend_cut_flags(values, years, calendar_year=False, ref_year=None):
+    """(連続増配年数, 減配なし) を進行中の年度を除いた配当系列から判定する"""
+    vals = completed_dividends(values, years, calendar_year, ref_year)
+    return consecutive_dividend_growth(vals), (has_no_dividend_cut(vals) if len(vals) >= 3 else None)
+
+
+def apply_dividend_cut_flags(entry, ref_year=None):
+    """キャッシュの配当系列から dividendStreak / noDividendCut を引き直す。変わったら True"""
+    vals = entry.get("dividend") or []
+    yrs = entry.get("dividendYears") or []
+    streak, no_cut = dividend_cut_flags(vals, yrs, not entry.get("irbank_enriched"), ref_year)
+    changed = (entry.get("dividendStreak"), entry.get("noDividendCut")) != (streak, no_cut)
+    entry["dividendStreak"] = streak
+    entry["noDividendCut"] = no_cut
+    return changed
+
+
+def refresh_dividend_cut_flags(cache):
+    """年が替わると「進行中の年度」も替わるので、毎回の実行で判定を引き直す（通信なし）"""
+    changed = sum(1 for e in cache.values() if isinstance(e, dict) and apply_dividend_cut_flags(e))
+    if changed:
+        print(f"減配判定を再計算: {changed}銘柄を更新")
+    return changed
+
+
 def resolve_dividend_yield(entry, price, ttm_dividend=0, ref_year=None):
     """配当利回りを (利回り, 算出根拠) で返す。
     根拠は "annual"（年間配当ベース）または "ttm"（直近12ヶ月実績ベース）。
@@ -906,8 +956,6 @@ def fetch_stock_data(code, name_hint=""):
             yearly_prices.append(round(float(yearly_price_dict.get(y, 0)), 1))
 
         name = info.get("longName") or info.get("shortName") or name_hint or code
-        div_streak = consecutive_dividend_growth(div_values)
-
         current_price = float(
             info.get("currentPrice") or
             info.get("regularMarketPrice") or
@@ -931,6 +979,9 @@ def fetch_stock_data(code, name_hint=""):
         if len(div_values) >= 2 and div_values[-2] > 0 and div_values[-1] > div_values[-2] * 3:
             div_values[-1] = div_values[-2]
             latest_annual_div = div_values[-1]
+
+        # 暦年集計なので当年は未確定。減配判定からは外す
+        div_streak, no_div_cut = dividend_cut_flags(div_values, div_years, calendar_year=True)
 
         if current_price > 0 and latest_annual_div > 0:
             div_yield = round(latest_annual_div / current_price * 100, 2)
@@ -958,7 +1009,7 @@ def fetch_stock_data(code, name_hint=""):
             "yearlyPrices": yearly_prices,
             "revenueTrend": calc_trend(revs),
             "profitTrend":  calc_trend(profs),
-            "noDividendCut": has_no_dividend_cut(div_values) if len(div_values)>=3 else None,
+            "noDividendCut": no_div_cut,
             "dividendStreak": div_streak,
             "dividendYield": div_yield,
             "dividendYieldBasis": "ttm" if div_yield > 0 else None,
@@ -1685,8 +1736,7 @@ def apply_split_normalization(code, entry, ctx=None, today=None):
             summary["dividend"] = {str(y): f for y, f, a, b in zip(div_years, factors, div_values, new_vals) if a != b}
             if entry.get("dividend") != new_vals:
                 entry["dividend"] = new_vals
-                entry["dividendStreak"] = consecutive_dividend_growth(new_vals)
-                entry["noDividendCut"] = has_no_dividend_cut(new_vals) if len(new_vals) >= 3 else None
+                apply_dividend_cut_flags(entry)
 
         # EPS: 純利益÷EPS の株式数と現在株式数の比、および取得日以降の分割で補正
         if eps_years and len(eps_values) == len(eps_years):
@@ -1771,9 +1821,7 @@ def restore_basis_raw_from_snapshot(cache, sha):
         entry["basisRaw"] = raw
         for k in BASIS_RAW_KEYS:
             entry[k] = list(raw[k])
-        vals = entry.get("dividend") or []
-        entry["dividendStreak"] = consecutive_dividend_growth(vals)
-        entry["noDividendCut"] = has_no_dividend_cut(vals) if len(vals) >= 3 else None
+        apply_dividend_cut_flags(entry)
         ev = entry.get("epsValues") or []
         entry["epsTrend"] = calc_trend(ev) if len(ev) >= 3 else {"slope": 0, "r2": 0, "growthRate": 0}
         for stale in ("splitAdjust", "epsBasisNormalized"):
@@ -1870,12 +1918,11 @@ def enrich_irbank(cache):
                 div_years_10 = div_years[-10:]
                 cache[code]["dividend"]       = div_vals_10
                 cache[code]["dividendYears"]  = div_years_10
-                cache[code]["dividendStreak"] = consecutive_dividend_growth(div_vals_10)
-                cache[code]["noDividendCut"]  = has_no_dividend_cut(div_vals_10) if len(div_vals_10) >= 3 else None
-                # 配当利回りを年間配当（最新確定年度）ベースで再計算。
-                # resolve_dividend_yield は irbank_enriched を見て年度データを
-                # 信用するか決めるので、先に立てておく。
+                # 減配判定と利回りは irbank_enriched を見て年度データの扱いを
+                # 決めるので、先に立てておく。
                 cache[code]["irbank_enriched"] = True
+                apply_dividend_cut_flags(cache[code])
+                # 配当利回りを年間配当（最新確定年度）ベースで再計算。
                 yld, basis = resolve_dividend_yield(cache[code],
                                                     cache[code].get("currentPrice") or 0,
                                                     cache[code].get("dividendTTM") or 0)
@@ -2077,6 +2124,10 @@ def main():
             codes = codes[:fetch_limit]
             print(f"  取得制限: {fetch_limit}社")
         cache = fetch_all(codes)
+
+    cache = get_cache() or cache
+    if refresh_dividend_cut_flags(cache):
+        save_cache(cache)
 
     # ポートフォリオ内のETF/REITは個別株と別ルートで毎回更新（1343 東証REIT指数ETF など）
     update_portfolio_etfs(cache)
