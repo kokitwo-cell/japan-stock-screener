@@ -10,7 +10,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from update_data import latest_annual_dividend, resolve_dividend_yield  # noqa: E402
+from update_data import dividend_cut_flags, latest_annual_dividend, resolve_dividend_yield  # noqa: E402
 
 REF_YEAR = 2026
 
@@ -67,6 +67,21 @@ ANNUAL_CASES = [
     ("年と値の本数が合わない", [10, 20], [2025], (0, None)),
 ]
 
+# (説明, 配当, 年, 暦年集計か, 期待する(連続増配年数, 減配なし))
+CUT_CASES = [
+    # 本件: Yahoo の暦年集計で当年は6月の期末分しか入っておらず減配扱いになっていた
+    ("8306: 暦年集計の当年(期中)は減配とみなさない",
+     [18, 21, 24, 25, 26, 30, 36, 46, 74, 39], list(range(2017, 2027)), True, (8, True)),
+    ("暦年集計でも前年までの減配は検出する",
+     [30, 20, 15, 10], [2022, 2023, 2024, 2025], True, (0, False)),
+    ("会計年度: 進行中年度の中間配当のみは除く",
+     [40, 45, 50, 25], [2023, 2024, 2025, 2026], False, (2, True)),
+    ("会計年度: 進行中年度でも年間額が出ていれば使う",
+     [40, 45, 50, 55], [2023, 2024, 2025, 2026], False, (3, True)),
+    ("会計年度: 確定年度の減配はそのまま",
+     [50, 30, 20, 15], [2022, 2023, 2024, 2025], False, (0, False)),
+]
+
 
 def main():
     failed = 0
@@ -82,11 +97,17 @@ def main():
         failed += not ok
         print(f"{'OK ' if ok else 'NG '} resolve_dividend_yield: {name} -> {got} (期待 {expected})")
 
+    for name, values, years, calendar, expected in CUT_CASES:
+        got = dividend_cut_flags(values, years, calendar, ref_year=REF_YEAR)
+        ok = got == expected
+        failed += not ok
+        print(f"{'OK ' if ok else 'NG '} dividend_cut_flags: {name} -> {got} (期待 {expected})")
+
     print("-" * 50)
     if failed:
         print(f"❌ {failed}件失敗")
         return 1
-    print(f"✅ 全{len(ANNUAL_CASES) + len(CASES)}件パス")
+    print(f"✅ 全{len(ANNUAL_CASES) + len(CASES) + len(CUT_CASES)}件パス")
     return 0
 
 
