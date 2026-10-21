@@ -2052,10 +2052,26 @@ function payoutRatio(data) {
   return null;
 }
 
-// 直近n年間で前年比減配となった年を返す
-function recentDividendCutYears(data, n) {
+// 減配判定に使う配当系列（進行中の年度を除いたもの）。scripts/update_data.py の completed_dividends と同じ基準。
+// 進行中の年度は配当が出揃っておらず、前年より小さく見えて減配と誤判定される
+// （例: 8306 三菱UFJ は暦年集計で 2025年74円・2026年39円＝6月の期末分のみ）。
+// yfinance の暦年集計（ir-bank 未補完）は当年を常に除き、会計年度ベースは前年の6割未満に落ちた進行中年度だけ除く。
+function completedDividends(data) {
   const dv = data.dividend || [];
   const dy = data.dividendYears || [];
+  const n = dv.length;
+  if (!n || n !== dy.length || dy[n - 1] < new Date().getFullYear()) return { dv, dy };
+  const drop = { dv: dv.slice(0, -1), dy: dy.slice(0, -1) };
+  if (!data.irbank_enriched) return drop;
+  let prev = n - 2;
+  while (prev >= 0 && !(dv[prev] > 0)) prev--;
+  if (prev >= 0 && dy[n - 1] - dy[prev] <= 1 && dv[n - 1] < dv[prev] * 0.6) return drop;
+  return { dv, dy };
+}
+
+// 直近n年間で前年比減配となった年を返す
+function recentDividendCutYears(data, n) {
+  const { dv, dy } = completedDividends(data);
   const cuts = [];
   for (let i = Math.max(1, dv.length - n); i < dv.length; i++) {
     if (dv[i] < dv[i - 1]) cuts.push(dy[i]);
@@ -2079,8 +2095,7 @@ function realDividendYears(data) {
 // 「直近N年に減配なし」だけでは、何年も前に減配してから長期間水準を回復できていないケースを
 // 見逃してしまう（例: 1年で回復した減配は許容したいが、4年停滞した減配は除外したい）。
 function slowRecoveryCuts(data, stagnationYears) {
-  const dv = data.dividend || [];
-  const dy = data.dividendYears || [];
+  const { dv, dy } = completedDividends(data);
   const flags = [];
   let i = 1;
   while (i < dv.length) {
