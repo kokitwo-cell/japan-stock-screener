@@ -1233,7 +1233,15 @@ def fetch_irbank_financials(code):
         tables = soup.find_all("table")
         if not tables:
             return None
-        REV_KEYWORDS = ["売上", "完成工事高", "営業収益", "経常収益", "売収", "収益"]
+        REV_KEYWORDS = ["売上", "完成工事高", "営業収益", "経常収益", "売収", "経収", "収益"]
+
+        def profit_col(h):
+            """利益の列。銀行など営業利益の無い業態は経常利益で代用する（8306 三菱UFJ など）"""
+            idx = next((i for i, c in enumerate(h) if "営利" in c), None)
+            if idx is None:
+                idx = next((i for i, c in enumerate(h)
+                            if "経常" in c and not any(x in c for x in ("収", "率", "増"))), None)
+            return idx
 
         def parse_jpy(s):
             s = s.strip().replace(",", "").replace(" ", "")
@@ -1285,7 +1293,7 @@ def fetch_irbank_financials(code):
                 continue
             if fin_table is None:
                 has_rev = any(any(k in c for k in REV_KEYWORDS) for c in h)
-                has_prof = any("営利" in c for c in h)
+                has_prof = profit_col(h) is not None
                 if has_rev and has_prof:
                     fin_table, fin_header, fin_rows = t, h, rs
                     continue
@@ -1300,8 +1308,10 @@ def fetch_irbank_financials(code):
 
         try:
             rev_idx  = next(i for i, h in enumerate(fin_header) if any(k in h for k in REV_KEYWORDS))
-            prof_idx = next(i for i, h in enumerate(fin_header) if "営利" in h)
         except StopIteration:
+            return None
+        prof_idx = profit_col(fin_header)
+        if prof_idx is None or prof_idx == rev_idx:
             return None
         eps_idx = next((i for i, h in enumerate(fin_header) if h == "EPS"), None)
         # 純利益（株式分割によるEPSの基準ずれ補正に使う: 純利益÷EPS＝当時の株式数）
