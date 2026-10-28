@@ -1056,6 +1056,22 @@ header .status-pill.error { color: var(--accent); }
     </div>
 
     <div class="filter-section">
+      <div class="filter-section-title">PER水準（過去中央値比 ・ 複数選択可）</div>
+      <div class="toggle-row" id="togglePerCheap" onclick="togglePerLevel('cheap')">
+        <span class="toggle-label">割安圏（-15%以下）</span>
+        <div class="toggle-switch" id="swPerCheap"></div>
+      </div>
+      <div class="toggle-row" id="togglePerFair" onclick="togglePerLevel('fair')">
+        <span class="toggle-label">平均的（±15%以内）</span>
+        <div class="toggle-switch" id="swPerFair"></div>
+      </div>
+      <div class="toggle-row" id="togglePerExpensive" onclick="togglePerLevel('expensive')">
+        <span class="toggle-label">割高圏（+15%以上）</span>
+        <div class="toggle-switch" id="swPerExpensive"></div>
+      </div>
+    </div>
+
+    <div class="filter-section">
       <div class="filter-section-title">DIVIDEND</div>
       <div class="input-wrap">
         <div class="input-label">配当利回り 下限（%）</div>
@@ -1608,6 +1624,14 @@ const LIST_FILTER_UI = {
   notedOnly:    { row: 'toggleNoteBtn',        sw: 'swNote',        opposite: 'notedExclude' },
   notedExclude: { row: 'toggleNoteExcludeBtn', sw: 'swNoteExclude', opposite: 'notedOnly' },
 };
+// PER水準（過去PER中央値との比較、perHistory() の判定）による絞り込み。複数選択可。
+// どれも選択していなければ絞り込まない。選択中は判定できない銘柄（過去PERが3年分未満など）は除外される。
+const perLevelFilters = { cheap: false, fair: false, expensive: false };
+const PER_LEVEL_UI = {
+  cheap:     { row: 'togglePerCheap',     sw: 'swPerCheap' },
+  fair:      { row: 'togglePerFair',      sw: 'swPerFair' },
+  expensive: { row: 'togglePerExpensive', sw: 'swPerExpensive' },
+};
 // 保有の増減はポートフォリオタブで行うため、保有で絞り込み中のときだけ
 // スクリーナータブに戻ったタイミングで再フィルタする（非表示中のチャート再描画を避ける）。
 let pendingHoldingRefresh = false;
@@ -1879,6 +1903,14 @@ function toggleListFilter(key) {
   listFilters[key] = !listFilters[key];
   if (listFilters[key]) listFilters[ui.opposite] = false;
   renderListFilterUI();
+  applyFilters();
+}
+
+function togglePerLevel(level) {
+  perLevelFilters[level] = !perLevelFilters[level];
+  const { row, sw } = PER_LEVEL_UI[level];
+  document.getElementById(row).classList.toggle('active', perLevelFilters[level]);
+  document.getElementById(sw).classList.toggle('on', perLevelFilters[level]);
   applyFilters();
 }
 
@@ -2232,6 +2264,14 @@ function applyFilters() {
     filtered = filtered.filter(s => !hasNote(s.code));
   }
 
+  const perLevels = Object.keys(perLevelFilters).filter(k => perLevelFilters[k]);
+  if (perLevels.length) {
+    filtered = filtered.filter(s => {
+      const level = perHistory(s)?.verdict?.level;
+      return level && perLevels.includes(level);
+    });
+  }
+
   document.getElementById('progressLabel').textContent = `完了: ${filtered.length}社ヒット / ${allResults.length}社中`;
   document.getElementById('progressBar').style.width = '100%';
   setStatus('done', `完了 — ${filtered.length}社`);
@@ -2314,6 +2354,8 @@ function downloadCSV() {
   else if (listFilters.heldExclude) suffix += '_excl_held';
   if (listFilters.notedOnly) suffix += '_noted';
   else if (listFilters.notedExclude) suffix += '_excl_noted';
+  const perLevels = Object.keys(perLevelFilters).filter(k => perLevelFilters[k]);
+  if (perLevels.length) suffix += '_per_' + perLevels.join('-');
   a.href = url; a.download = `screening${suffix}_${new Date().toISOString().slice(0,10)}.csv`;
   a.click(); URL.revokeObjectURL(url);
 }
